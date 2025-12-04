@@ -125,6 +125,7 @@ pub mod farmtrace {
         ctx: Context<RecordSatelliteVerification>,
         verification_hash: String,
         no_deforestation: bool,
+        verification_timestamp: i64,
     ) -> Result<()> {
         let farm_plot = &mut ctx.accounts.farm_plot;
         let verification = &mut ctx.accounts.verification;
@@ -134,7 +135,7 @@ pub mod farmtrace {
         // Store verification data
         verification.farm_plot = farm_plot.key();
         verification.verifier = ctx.accounts.verifier.key();
-        verification.verification_timestamp = Clock::get()?.unix_timestamp;
+        verification.verification_timestamp = verification_timestamp;
         verification.verification_hash = verification_hash.clone();
         verification.no_deforestation = no_deforestation;
         verification.verification_type = VerificationType::Satellite;
@@ -204,44 +205,44 @@ pub mod farmtrace {
 
 #[account]
 pub struct FarmPlot {
-    pub plot_id: String,              // 32 + 4 bytes
-    pub farmer: Pubkey,               // 32 bytes
-    pub farmer_name: String,          // 64 + 4 bytes
-    pub location: String,             // 64 + 4 bytes
-    pub coordinates: String,          // 128 + 4 bytes (GeoJSON format)
-    pub area_hectares: f64,           // 8 bytes
-    pub commodity_type: CommodityType, // 1 byte
-    pub registration_timestamp: i64,   // 8 bytes
-    pub deforestation_risk: DeforestationRisk, // 1 byte
-    pub compliance_score: u8,         // 1 byte (0-100)
-    pub last_verified: i64,           // 8 bytes
-    pub is_active: bool,              // 1 byte
-    pub bump: u8,                     // 1 byte
+    pub plot_id: String,                // max 32
+    pub farmer: Pubkey,
+    pub farmer_name: String,            // max 64
+    pub location: String,               // max 64
+    pub coordinates: String,            // max 128
+    pub area_hectares: f64,
+    pub commodity_type: CommodityType,
+    pub registration_timestamp: i64,
+    pub deforestation_risk: DeforestationRisk,
+    pub compliance_score: u8,
+    pub last_verified: i64,
+    pub is_active: bool,
+    pub bump: u8,
 }
 
 #[account]
 pub struct HarvestBatch {
-    pub batch_id: String,             // 32 + 4 bytes
-    pub farm_plot: Pubkey,            // 32 bytes
-    pub farmer: Pubkey,               // 32 bytes
-    pub weight_kg: u64,               // 8 bytes
-    pub harvest_timestamp: i64,       // 8 bytes
-    pub commodity_type: CommodityType, // 1 byte
-    pub status: BatchStatus,          // 1 byte
-    pub compliance_status: ComplianceStatus, // 1 byte
-    pub destination: String,          // 64 + 4 bytes
-    pub bump: u8,                     // 1 byte
+    pub batch_id: String,
+    pub farm_plot: Pubkey,
+    pub farmer: Pubkey,
+    pub weight_kg: u64,
+    pub harvest_timestamp: i64,
+    pub commodity_type: CommodityType,
+    pub status: BatchStatus,
+    pub compliance_status: ComplianceStatus,
+    pub destination: String,
+    pub bump: u8,
 }
 
 #[account]
 pub struct SatelliteVerification {
-    pub farm_plot: Pubkey,            // 32 bytes
-    pub verifier: Pubkey,             // 32 bytes
-    pub verification_timestamp: i64,   // 8 bytes
-    pub verification_hash: String,     // 64 + 4 bytes (IPFS hash)
-    pub no_deforestation: bool,       // 1 byte
-    pub verification_type: VerificationType, // 1 byte
-    pub bump: u8,                     // 1 byte
+    pub farm_plot: Pubkey,
+    pub verifier: Pubkey,
+    pub verification_timestamp: i64,
+    pub verification_hash: String,
+    pub no_deforestation: bool,
+    pub verification_type: VerificationType,
+    pub bump: u8,
 }
 
 // ============================================================================
@@ -304,6 +305,7 @@ pub struct UpdateBatchStatus<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(verification_hash: String, no_deforestation: bool, verification_timestamp: i64)]
 pub struct RecordSatelliteVerification<'info> {
     #[account(
         init,
@@ -313,7 +315,7 @@ pub struct RecordSatelliteVerification<'info> {
             b"verification",
             farm_plot.key().as_ref(),
             verifier.key().as_ref(),
-            &Clock::get()?.unix_timestamp.to_le_bytes()
+            &verification_timestamp.to_le_bytes()
         ],
         bump
     )]
@@ -331,6 +333,7 @@ pub struct RecordSatelliteVerification<'info> {
     
     pub system_program: Program<'info, System>,
 }
+
 
 #[derive(Accounts)]
 pub struct GenerateDDSData<'info> {
