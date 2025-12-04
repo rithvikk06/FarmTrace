@@ -133,7 +133,7 @@ export default function FarmTraceApp() {
     return (
       <div className="w-full min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
         <h1 className="text-3xl font-bold mb-4 text-red-600">Error Loading Program</h1>
-        <p className="text-gray-600 mb-6">Failed to initialize Anchor program. Check console for details.</p>
+        <p className="text-gray-600 mb-6">Failed to initialize Anchor program</p>
         <WalletMultiButton />
       </div>
     );
