@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("5x3fQEN1GFoukV7cxqm9thmJPvztFnnD9hUM1Yc5pLbG");
+declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 
 #[program]
 pub mod farmtrace {
