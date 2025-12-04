@@ -17,9 +17,6 @@ target/
 **/*.rs.bk
 test-ledger/
 
-# IDL
-idl/
-
 # Keys
 *.pem
 *.key

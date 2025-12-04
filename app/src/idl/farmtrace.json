@@ -1,0 +1,1079 @@
+{
+  "address": "FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE",
+  "metadata": {
+    "name": "farmtrace",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "generate_dds_data",
+      "docs": [
+        "Generate DDS (Due Diligence Statement) data for EUDR",
+        "This compiles all required data for regulatory submission"
+      ],
+      "discriminator": [
+        93,
+        136,
+        133,
+        63,
+        19,
+        29,
+        52,
+        87
+      ],
+      "accounts": [
+        {
+          "name": "harvest_batch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  114,
+                  118,
+                  101,
+                  115,
+                  116,
+                  95,
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "harvest_batch.batch_id",
+                "account": "HarvestBatch"
+              },
+              {
+                "kind": "account",
+                "path": "harvest_batch.farmer",
+                "account": "HarvestBatch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "farm_plot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  112,
+                  108,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.plot_id",
+                "account": "FarmPlot"
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.farmer",
+                "account": "FarmPlot"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [],
+      "returns": {
+        "defined": {
+          "name": "DDSReport"
+        }
+      }
+    },
+    {
+      "name": "record_satellite_verification",
+      "docs": [
+        "Record satellite verification for deforestation monitoring",
+        "This is the oracle integration for EUDR compliance"
+      ],
+      "discriminator": [
+        138,
+        244,
+        124,
+        210,
+        166,
+        206,
+        47,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "verification",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  101,
+                  114,
+                  105,
+                  102,
+                  105,
+                  99,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot"
+              },
+              {
+                "kind": "account",
+                "path": "verifier"
+              },
+              {
+                "kind": "arg",
+                "path": "verification_timestamp"
+              }
+            ]
+          }
+        },
+        {
+          "name": "farm_plot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  112,
+                  108,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.plot_id",
+                "account": "FarmPlot"
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.farmer",
+                "account": "FarmPlot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "verifier",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "verification_hash",
+          "type": "string"
+        },
+        {
+          "name": "no_deforestation",
+          "type": "bool"
+        },
+        {
+          "name": "verification_timestamp",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "register_farm_plot",
+      "docs": [
+        "Register a new farm plot with geolocation data",
+        "This creates the foundational NFT for EUDR compliance"
+      ],
+      "discriminator": [
+        224,
+        228,
+        35,
+        236,
+        234,
+        117,
+        249,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "farm_plot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  112,
+                  108,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "plot_id"
+              },
+              {
+                "kind": "account",
+                "path": "farmer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "farmer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "plot_id",
+          "type": "string"
+        },
+        {
+          "name": "farmer_name",
+          "type": "string"
+        },
+        {
+          "name": "location",
+          "type": "string"
+        },
+        {
+          "name": "coordinates",
+          "type": "string"
+        },
+        {
+          "name": "area_hectares",
+          "type": "f64"
+        },
+        {
+          "name": "commodity_type",
+          "type": {
+            "defined": {
+              "name": "CommodityType"
+            }
+          }
+        },
+        {
+          "name": "registration_timestamp",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "register_harvest_batch",
+      "docs": [
+        "Register a harvest batch linked to a farm plot",
+        "This creates the supply chain traceability token"
+      ],
+      "discriminator": [
+        218,
+        178,
+        244,
+        140,
+        105,
+        5,
+        26,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "harvest_batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  114,
+                  118,
+                  101,
+                  115,
+                  116,
+                  95,
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "batch_id"
+              },
+              {
+                "kind": "account",
+                "path": "farmer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "farm_plot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  112,
+                  108,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.plot_id",
+                "account": "FarmPlot"
+              },
+              {
+                "kind": "account",
+                "path": "farmer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "farmer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_id",
+          "type": "string"
+        },
+        {
+          "name": "weight_kg",
+          "type": "u64"
+        },
+        {
+          "name": "harvest_timestamp",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "update_batch_status",
+      "docs": [
+        "Update batch status as it moves through supply chain",
+        "Tracks: Harvested → Processing → InTransit → Delivered"
+      ],
+      "discriminator": [
+        71,
+        201,
+        175,
+        178,
+        12,
+        50,
+        51,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "harvest_batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  114,
+                  118,
+                  101,
+                  115,
+                  116,
+                  95,
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "harvest_batch.batch_id",
+                "account": "HarvestBatch"
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_status",
+          "type": {
+            "defined": {
+              "name": "BatchStatus"
+            }
+          }
+        },
+        {
+          "name": "destination",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "FarmPlot",
+      "discriminator": [
+        40,
+        161,
+        15,
+        119,
+        239,
+        151,
+        240,
+        61
+      ]
+    },
+    {
+      "name": "HarvestBatch",
+      "discriminator": [
+        77,
+        207,
+        252,
+        164,
+        233,
+        174,
+        126,
+        159
+      ]
+    },
+    {
+      "name": "SatelliteVerification",
+      "discriminator": [
+        241,
+        54,
+        242,
+        242,
+        235,
+        248,
+        86,
+        189
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BatchStatusUpdated",
+      "discriminator": [
+        68,
+        227,
+        137,
+        197,
+        172,
+        152,
+        59,
+        35
+      ]
+    },
+    {
+      "name": "DDSReportGenerated",
+      "discriminator": [
+        204,
+        145,
+        94,
+        18,
+        107,
+        64,
+        76,
+        59
+      ]
+    },
+    {
+      "name": "FarmPlotRegistered",
+      "discriminator": [
+        143,
+        197,
+        101,
+        74,
+        154,
+        122,
+        40,
+        100
+      ]
+    },
+    {
+      "name": "HarvestBatchRegistered",
+      "discriminator": [
+        147,
+        21,
+        11,
+        119,
+        162,
+        133,
+        21,
+        204
+      ]
+    },
+    {
+      "name": "SatelliteVerificationRecorded",
+      "discriminator": [
+        248,
+        204,
+        60,
+        159,
+        248,
+        75,
+        249,
+        249
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NonCompliantFarm",
+      "msg": "Farm is not compliant with EUDR requirements"
+    },
+    {
+      "code": 6001,
+      "name": "PlotIdTooLong",
+      "msg": "Plot ID is too long (max 32 characters)"
+    },
+    {
+      "code": 6002,
+      "name": "BatchIdTooLong",
+      "msg": "Batch ID is too long (max 32 characters)"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidCoordinates",
+      "msg": "Invalid coordinates format"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidArea",
+      "msg": "Invalid area (must be > 0)"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidWeight",
+      "msg": "Invalid weight (must be > 0)"
+    },
+    {
+      "code": 6006,
+      "name": "DestinationTooLong",
+      "msg": "Destination string is too long"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidHash",
+      "msg": "Invalid verification hash"
+    }
+  ],
+  "types": [
+    {
+      "name": "BatchStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Harvested"
+          },
+          {
+            "name": "Processing"
+          },
+          {
+            "name": "InTransit"
+          },
+          {
+            "name": "Delivered"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchStatusUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "new_status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "destination",
+            "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CommodityType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Cocoa"
+          },
+          {
+            "name": "Coffee"
+          },
+          {
+            "name": "PalmOil"
+          },
+          {
+            "name": "Soy"
+          },
+          {
+            "name": "Cattle"
+          },
+          {
+            "name": "Rubber"
+          },
+          {
+            "name": "Timber"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComplianceStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Compliant"
+          },
+          {
+            "name": "PendingReview"
+          },
+          {
+            "name": "NonCompliant"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DDSReport",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "plot_id",
+            "type": "string"
+          },
+          {
+            "name": "farmer",
+            "type": "pubkey"
+          },
+          {
+            "name": "coordinates",
+            "type": "string"
+          },
+          {
+            "name": "commodity_type",
+            "type": {
+              "defined": {
+                "name": "CommodityType"
+              }
+            }
+          },
+          {
+            "name": "harvest_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "weight_kg",
+            "type": "u64"
+          },
+          {
+            "name": "no_deforestation_verified",
+            "type": "bool"
+          },
+          {
+            "name": "compliance_score",
+            "type": "u8"
+          },
+          {
+            "name": "last_verified",
+            "type": "i64"
+          },
+          {
+            "name": "registration_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DDSReportGenerated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "compliance_score",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeforestationRisk",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Low"
+          },
+          {
+            "name": "Medium"
+          },
+          {
+            "name": "High"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FarmPlot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "plot_id",
+            "type": "string"
+          },
+          {
+            "name": "farmer",
+            "type": "pubkey"
+          },
+          {
+            "name": "farmer_name",
+            "type": "string"
+          },
+          {
+            "name": "location",
+            "type": "string"
+          },
+          {
+            "name": "coordinates",
+            "type": "string"
+          },
+          {
+            "name": "area_hectares",
+            "type": "f64"
+          },
+          {
+            "name": "commodity_type",
+            "type": {
+              "defined": {
+                "name": "CommodityType"
+              }
+            }
+          },
+          {
+            "name": "registration_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "deforestation_risk",
+            "type": {
+              "defined": {
+                "name": "DeforestationRisk"
+              }
+            }
+          },
+          {
+            "name": "compliance_score",
+            "type": "u8"
+          },
+          {
+            "name": "last_verified",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FarmPlotRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "plot_id",
+            "type": "string"
+          },
+          {
+            "name": "farmer",
+            "type": "pubkey"
+          },
+          {
+            "name": "coordinates",
+            "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HarvestBatch",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "farm_plot",
+            "type": "pubkey"
+          },
+          {
+            "name": "farmer",
+            "type": "pubkey"
+          },
+          {
+            "name": "weight_kg",
+            "type": "u64"
+          },
+          {
+            "name": "harvest_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "commodity_type",
+            "type": {
+              "defined": {
+                "name": "CommodityType"
+              }
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "compliance_status",
+            "type": {
+              "defined": {
+                "name": "ComplianceStatus"
+              }
+            }
+          },
+          {
+            "name": "destination",
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HarvestBatchRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "farm_plot",
+            "type": "pubkey"
+          },
+          {
+            "name": "weight_kg",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SatelliteVerification",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "farm_plot",
+            "type": "pubkey"
+          },
+          {
+            "name": "verifier",
+            "type": "pubkey"
+          },
+          {
+            "name": "verification_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "verification_hash",
+            "type": "string"
+          },
+          {
+            "name": "no_deforestation",
+            "type": "bool"
+          },
+          {
+            "name": "verification_type",
+            "type": {
+              "defined": {
+                "name": "VerificationType"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SatelliteVerificationRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "farm_plot",
+            "type": "pubkey"
+          },
+          {
+            "name": "verification_hash",
+            "type": "string"
+          },
+          {
+            "name": "compliant",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VerificationType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Satellite"
+          },
+          {
+            "name": "Audit"
+          },
+          {
+            "name": "Manual"
+          }
+        ]
+      }
+    }
+  ]
+}

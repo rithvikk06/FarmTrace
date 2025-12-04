@@ -2,10 +2,9 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useConnection, useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { AnchorProvider, Program, web3, BN, Idl } from "@coral-xyz/anchor";
-import idl from "../idl/farmtrace.json";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 
-const PROGRAM_ID = new PublicKey(idl.metadata.address);
+const PROGRAM_ID = new PublicKey("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 
 const commodityOptions = [
   "Cocoa", "Coffee", "PalmOil", "Soy", "Cattle", "Rubber", "Timber"
@@ -48,24 +47,38 @@ export default function FarmTraceApp() {
   const wallet = useAnchorWallet();
   const { publicKey } = useWallet();
   const { connection } = useConnection();
+  const [program, setProgram] = useState<Program | null>(null);
+
+  console.log("publicKey", publicKey);
+  console.log("wallet", wallet);
 
   const provider = useMemo(() => {
     if (!wallet) return null;
-    return new AnchorProvider(connection, wallet, { 
+    return new AnchorProvider(connection, wallet, {
       commitment: "confirmed",
       preflightCommitment: "confirmed"
     });
   }, [connection, wallet]);
 
-  const program = useMemo(() => {
-    if (!provider) return null;
-    try {
-      return new Program(idl as Idl, PROGRAM_ID, provider);
-    } catch (err) {
-      console.error("Error creating program:", err);
-      return null;
-    }
+  console.log("provider", provider);
+
+  useEffect(() => {
+    const initProgram = async () => {
+      if (provider) {
+        try {
+          const program = await Program.at(PROGRAM_ID, provider);
+          setProgram(program);
+        } catch (err) {
+          console.error("Error creating program:", err);
+          setProgram(null);
+        }
+      }
+    };
+
+    initProgram();
   }, [provider]);
+
+  console.log("program", program);
 
   // Debug: log program status
   useEffect(() => {
