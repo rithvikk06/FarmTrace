@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useConnection, useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
+import { AnchorProvider, Program, web3, BN, Idl } from "@coral-xyz/anchor";
 import idl from "../idl/farmtrace.json";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 
-const PROGRAM_ID = new PublicKey((idl as any).metadata.address);
+const PROGRAM_ID = new PublicKey(idl.metadata.address);
 
 const commodityOptions = [
   "Cocoa", "Coffee", "PalmOil", "Soy", "Cattle", "Rubber", "Timber"
@@ -32,6 +32,18 @@ function harvestBatchPDA(batchId: string, farmerPubkey: PublicKey) {
   );
 }
 
+function verificationPDA(farmPlotKey: PublicKey, verifierKey: PublicKey, timestamp: number) {
+  return web3.PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("verification"),
+      farmPlotKey.toBuffer(),
+      verifierKey.toBuffer(),
+      Buffer.from(new BN(timestamp).toArray("le", 8))
+    ],
+    PROGRAM_ID
+  );
+}
+
 export default function FarmTraceApp() {
   const wallet = useAnchorWallet();
   const { publicKey } = useWallet();
@@ -39,22 +51,37 @@ export default function FarmTraceApp() {
 
   const provider = useMemo(() => {
     if (!wallet) return null;
-    return new AnchorProvider(connection, wallet as any, { commitment: "confirmed" });
+    return new AnchorProvider(connection, wallet, { 
+      commitment: "confirmed",
+      preflightCommitment: "confirmed"
+    });
   }, [connection, wallet]);
 
   const program = useMemo(() => {
     if (!provider) return null;
-    return new Program(idl as any, PROGRAM_ID, provider);
+    try {
+      return new Program(idl as Idl, PROGRAM_ID, provider);
+    } catch (err) {
+      console.error("Error creating program:", err);
+      return null;
+    }
   }, [provider]);
+
+  // Debug: log program status
+  useEffect(() => {
+    if (program) {
+      console.log("Program loaded successfully:", program.programId.toString());
+      console.log("Available methods:", Object.keys(program.methods));
+    }
+  }, [program]);
 
   // Form state for plot registration
   const [plotId, setPlotId] = useState("");
   const [farmerName, setFarmerName] = useState("");
   const [location, setLocation] = useState("");
-  const [coordinates, setCoordinates] = useState(""); // GeoJSON string or "lat,lng"
+  const [coordinates, setCoordinates] = useState("");
   const [areaHectares, setAreaHectares] = useState<number | "">("");
   const [commodity, setCommodity] = useState<Commodity>("Cocoa");
-  const [regTimestamp] = useState<number>(Math.floor(Date.now() / 1000));
 
   // Form state for batch
   const [batchId, setBatchId] = useState("");
@@ -89,6 +116,16 @@ export default function FarmTraceApp() {
     );
   }
 
+  if (!program) {
+    return (
+      <div className="w-full min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
+        <h1 className="text-3xl font-bold mb-4 text-red-600">Error Loading Program</h1>
+        <p className="text-gray-600 mb-6">Failed to initialize Anchor program. Check console for details.</p>
+        <WalletMultiButton />
+      </div>
+    );
+  }
+
   // -------------------------
   // 1) Register Farm Plot
   // -------------------------
@@ -98,21 +135,21 @@ export default function FarmTraceApp() {
     setTxMsg(null);
 
     try {
-      // derive PDA
-      const [farmPDA, farmBump] = farmPlotPDA(plotId, publicKey);
+      const [farmPDA] = farmPlotPDA(plotId, publicKey);
+      const regTimestamp = Math.floor(Date.now() / 1000);
 
-      // call anchor method
-      // NOTE: anchor expects the enum type as the exact variant; client helper uses object with key = variant name
-      const commodityArg = { [commodity]: {} };
+      console.log("Registering farm plot...");
+      console.log("Farm PDA:", farmPDA.toString());
+      console.log("Plot ID:", plotId);
 
-      await program.methods
+      const tx = await program.methods
         .registerFarmPlot(
           plotId,
           farmerName,
           location,
           coordinates,
-          Number(areaHectares),
-          commodityArg,
+          areaHectares as number,
+          { [commodity.charAt(0).toLowerCase() + commodity.slice(1)]: {} }, // Convert to camelCase
           new BN(regTimestamp)
         )
         .accounts({
@@ -120,12 +157,13 @@ export default function FarmTraceApp() {
           farmer: publicKey,
           systemProgram: SystemProgram.programId,
         })
-        .rpc({ commitment: "confirmed" });
+        .rpc();
 
-      setTxMsg("Farm plot registered successfully");
+      console.log("Transaction signature:", tx);
+      setTxMsg(`Farm plot registered successfully! Tx: ${tx.slice(0, 8)}...`);
     } catch (err: any) {
-      console.error("registerFarmPlot err:", err);
-      setTxMsg("Error: " + (err?.message ?? String(err)));
+      console.error("registerFarmPlot error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -142,28 +180,38 @@ export default function FarmTraceApp() {
     try {
       const [farmPDA] = farmPlotPDA(plotId, publicKey);
       const [batchPDA] = harvestBatchPDA(batchId, publicKey);
+      const harvestTimestamp = Math.floor(Date.now() / 1000);
 
-      await program.methods
-        .registerHarvestBatch(batchId, new BN(Number(batchWeight)), new BN(Math.floor(Date.now() / 1000)))
+      console.log("Registering harvest batch...");
+      console.log("Batch PDA:", batchPDA.toString());
+      console.log("Farm PDA:", farmPDA.toString());
+
+      const tx = await program.methods
+        .registerHarvestBatch(
+          batchId,
+          new BN(batchWeight as number),
+          new BN(harvestTimestamp)
+        )
         .accounts({
           harvestBatch: batchPDA,
           farmPlot: farmPDA,
           farmer: publicKey,
           systemProgram: SystemProgram.programId,
         })
-        .rpc({ commitment: "confirmed" });
+        .rpc();
 
-      setTxMsg("Harvest batch registered");
+      console.log("Transaction signature:", tx);
+      setTxMsg(`Harvest batch registered! Tx: ${tx.slice(0, 8)}...`);
     } catch (err: any) {
-      console.error("registerHarvestBatch err:", err);
-      setTxMsg("Error: " + (err?.message ?? String(err)));
+      console.error("registerHarvestBatch error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
   };
 
   // -------------------------
-  // 3) Record Satellite Verification (oracle)
+  // 3) Record Satellite Verification
   // -------------------------
   const recordSatelliteVerification = async () => {
     if (!program || !publicKey) return;
@@ -172,25 +220,31 @@ export default function FarmTraceApp() {
 
     try {
       const [farmPDA] = farmPlotPDA(plotId, publicKey);
+      const verifyTimestamp = Math.floor(Date.now() / 1000);
+      const [verifyPDA] = verificationPDA(farmPDA, publicKey, verifyTimestamp);
 
-      // The program creates a verification account with PDA including timestamp – we must pass accounts exactly
-      // derive a fresh PDA for the verification account using a timestamp seed – but on client we can't call Clock::get()
-      // so we use anchor to init (program will use Clock when building seeds). We'll instead call method and let it init
-      await program.methods
-        .recordSatelliteVerification(verificationHash, noDeforestation)
+      console.log("Recording satellite verification...");
+      console.log("Verification PDA:", verifyPDA.toString());
+
+      const tx = await program.methods
+        .recordSatelliteVerification(
+          verificationHash,
+          noDeforestation,
+          new BN(verifyTimestamp)
+        )
         .accounts({
-          verification: web3.Keypair.generate().publicKey, // Anchor will expect an init account; alternative is to use PDA that program expects; adjust as needed
+          verification: verifyPDA,
           farmPlot: farmPDA,
           verifier: publicKey,
           systemProgram: SystemProgram.programId,
         })
-        // Note: Depending on your program, init PDA may require the client to pass the correct PDA; adjust as necessary.
-        .rpc({ commitment: "confirmed" });
+        .rpc();
 
-      setTxMsg("Satellite verification recorded");
+      console.log("Transaction signature:", tx);
+      setTxMsg(`Satellite verification recorded! Tx: ${tx.slice(0, 8)}...`);
     } catch (err: any) {
-      console.error("recordSatelliteVerification err:", err);
-      setTxMsg("Error: " + (err?.message ?? String(err)));
+      console.error("recordSatelliteVerification error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -207,20 +261,25 @@ export default function FarmTraceApp() {
     try {
       const [batchPDA] = harvestBatchPDA(batchId, publicKey);
 
-      const statusArg = { [status]: {} };
+      console.log("Updating batch status...");
+      console.log("Batch PDA:", batchPDA.toString());
 
-      await program.methods
-        .updateBatchStatus(statusArg, statusDestination)
+      const tx = await program.methods
+        .updateBatchStatus(
+          { [status.charAt(0).toLowerCase() + status.slice(1)]: {} }, // Convert to camelCase
+          statusDestination
+        )
         .accounts({
           harvestBatch: batchPDA,
           authority: publicKey,
         })
-        .rpc({ commitment: "confirmed" });
+        .rpc();
 
-      setTxMsg("Batch status updated");
+      console.log("Transaction signature:", tx);
+      setTxMsg(`Batch status updated! Tx: ${tx.slice(0, 8)}...`);
     } catch (err: any) {
-      console.error("updateBatchStatus err:", err);
-      setTxMsg("Error: " + (err?.message ?? String(err)));
+      console.error("updateBatchStatus error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -238,7 +297,10 @@ export default function FarmTraceApp() {
       const [batchPDA] = harvestBatchPDA(batchId, publicKey);
       const [farmPDA] = farmPlotPDA(plotId, publicKey);
 
-      // Anchor's view() returns the struct if program supports returning it (your program does)
+      console.log("Generating DDS...");
+      console.log("Batch PDA:", batchPDA.toString());
+      console.log("Farm PDA:", farmPDA.toString());
+
       const dds: any = await program.methods
         .generateDdsData()
         .accounts({
@@ -247,25 +309,33 @@ export default function FarmTraceApp() {
         })
         .view();
 
+      console.log("DDS Report:", dds);
       setDdsReport(dds);
-      setTxMsg("DDS generated");
+      setTxMsg("DDS report generated successfully!");
     } catch (err: any) {
-      console.error("generateDDS err:", err);
-      setTxMsg("Error: " + (err?.message ?? String(err)));
+      console.error("generateDDS error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
   };
 
   // -------------------------
-  // Small UI / form
+  // UI
   // -------------------------
   return (
-    <div className="w-full min-h-screen bg-zinc-800 p-8">
-      <header className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">FarmTrace Control Panel</h1>
+    <div className="w-full min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white">
+      <header className="flex items-center justify-between mb-8 pb-4 border-b border-slate-700">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+            FarmTrace Control Panel
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">EUDR Compliance Dashboard</p>
+        </div>
         <div className="flex items-center gap-4">
-          <div className="font-mono text-sm">{publicKey?.toBase58()}</div>
+          <div className="text-xs font-mono bg-slate-800 px-3 py-2 rounded border border-slate-700">
+            {publicKey?.toBase58().slice(0, 8)}...
+          </div>
           <WalletMultiButton />
         </div>
       </header>
@@ -273,79 +343,174 @@ export default function FarmTraceApp() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Register Farm Plot */}
-        <section className="p-4 border rounded">
-          <h2 className="font-semibold mb-2">Register Farm Plot</h2>
+        <section className="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-green-400">📍 Register Farm Plot</h2>
 
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Plot ID" value={plotId} onChange={(e) => setPlotId(e.target.value)} />
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Farmer Name" value={farmerName} onChange={(e) => setFarmerName(e.target.value)} />
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Location (village/region)" value={location} onChange={(e) => setLocation(e.target.value)} />
-          <textarea className="w-full mb-2 p-2 border rounded" rows={3} placeholder="Coordinates (GeoJSON or 'lat,lng')" value={coordinates} onChange={(e) => setCoordinates(e.target.value)} />
-          <input type="number" className="w-full mb-2 p-2 border rounded" placeholder="Area (hectares)" value={areaHectares as any} onChange={(e) => setAreaHectares(e.target.value === "" ? "" : Number(e.target.value))} />
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Plot ID (e.g., PLOT-001)" 
+            value={plotId} 
+            onChange={(e) => setPlotId(e.target.value)} 
+          />
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Farmer Name" 
+            value={farmerName} 
+            onChange={(e) => setFarmerName(e.target.value)} 
+          />
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Location (e.g., Côte d'Ivoire)" 
+            value={location} 
+            onChange={(e) => setLocation(e.target.value)} 
+          />
+          <textarea 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            rows={2} 
+            placeholder="Coordinates (e.g., 5.3599,-4.0083)" 
+            value={coordinates} 
+            onChange={(e) => setCoordinates(e.target.value)} 
+          />
+          <input 
+            type="number" 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Area (hectares)" 
+            value={areaHectares as any} 
+            onChange={(e) => setAreaHectares(e.target.value === "" ? "" : Number(e.target.value))} 
+          />
 
-          <select className="w-full mb-2 p-2 border rounded" value={commodity} onChange={(e) => setCommodity(e.target.value as Commodity)}>
+          <select 
+            className="w-full mb-4 p-3 bg-slate-900 border border-slate-700 rounded text-white" 
+            value={commodity} 
+            onChange={(e) => setCommodity(e.target.value as Commodity)}
+          >
             {commodityOptions.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 
-          <button disabled={loading} onClick={registerFarmPlot} className="px-4 py-2 rounded bg-blue-600 text-white">
-            {loading ? "Sending..." : "Register Plot"}
+          <button 
+            disabled={loading} 
+            onClick={registerFarmPlot} 
+            className="w-full px-4 py-3 rounded bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? "Processing..." : "Register Plot"}
           </button>
         </section>
 
         {/* Register Harvest Batch */}
-        <section className="p-4 border rounded">
-          <h2 className="font-semibold mb-2">Register Harvest Batch</h2>
+        <section className="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-blue-400">📦 Register Harvest Batch</h2>
 
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Batch ID" value={batchId} onChange={(e) => setBatchId(e.target.value)} />
-          <input type="number" className="w-full mb-2 p-2 border rounded" placeholder="Weight (kg)" value={batchWeight as any} onChange={(e) => setBatchWeight(e.target.value === "" ? "" : Number(e.target.value))} />
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Batch ID (e.g., BATCH-001)" 
+            value={batchId} 
+            onChange={(e) => setBatchId(e.target.value)} 
+          />
+          <input 
+            type="number" 
+            className="w-full mb-4 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Weight (kg)" 
+            value={batchWeight as any} 
+            onChange={(e) => setBatchWeight(e.target.value === "" ? "" : Number(e.target.value))} 
+          />
 
-          <button disabled={loading} onClick={registerHarvestBatch} className="px-4 py-2 rounded bg-green-600 text-white">
-            {loading ? "Sending..." : "Register Batch"}
+          <button 
+            disabled={loading} 
+            onClick={registerHarvestBatch} 
+            className="w-full px-4 py-3 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? "Processing..." : "Register Batch"}
           </button>
         </section>
 
         {/* Satellite Verification */}
-        <section className="p-4 border rounded">
-          <h2 className="font-semibold mb-2">Record Satellite Verification</h2>
+        <section className="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-yellow-400">🛰️ Satellite Verification</h2>
 
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Verification Hash (IPFS/oracle)" value={verificationHash} onChange={(e) => setVerificationHash(e.target.value)} />
-          <label className="flex items-center gap-2 mb-2">
-            <input type="checkbox" checked={noDeforestation} onChange={(e) => setNoDeforestation(e.target.checked)} />
-            No deforestation detected (true/false)
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Verification Hash (IPFS/oracle)" 
+            value={verificationHash} 
+            onChange={(e) => setVerificationHash(e.target.value)} 
+          />
+          <label className="flex items-center gap-3 mb-4 p-3 bg-slate-900 rounded cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={noDeforestation} 
+              onChange={(e) => setNoDeforestation(e.target.checked)}
+              className="w-5 h-5"
+            />
+            <span className="text-sm">No deforestation detected</span>
           </label>
 
-          <button disabled={loading} onClick={recordSatelliteVerification} className="px-4 py-2 rounded bg-yellow-600 text-white">
-            {loading ? "Sending..." : "Record Verification"}
+          <button 
+            disabled={loading} 
+            onClick={recordSatelliteVerification} 
+            className="w-full px-4 py-3 rounded bg-yellow-600 hover:bg-yellow-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? "Processing..." : "Record Verification"}
           </button>
         </section>
 
-        {/* Update status & DDS */}
-        <section className="p-4 border rounded">
-          <h2 className="font-semibold mb-2">Update Batch Status</h2>
+        {/* Update Status & DDS */}
+        <section className="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+          <h2 className="text-xl font-semibold mb-4 text-purple-400">🔄 Update & Report</h2>
 
-          <select className="w-full mb-2 p-2 border rounded" value={status} onChange={(e) => setStatus(e.target.value as BatchStatus)}>
+          <h3 className="text-sm font-semibold mb-2 text-slate-400">Update Batch Status</h3>
+          <select 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white" 
+            value={status} 
+            onChange={(e) => setStatus(e.target.value as BatchStatus)}
+          >
             {batchStatusOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
-          <input className="w-full mb-2 p-2 border rounded" placeholder="Destination" value={statusDestination} onChange={(e) => setStatusDestination(e.target.value)} />
+          <input 
+            className="w-full mb-3 p-3 bg-slate-900 border border-slate-700 rounded text-white placeholder-slate-500" 
+            placeholder="Destination" 
+            value={statusDestination} 
+            onChange={(e) => setStatusDestination(e.target.value)} 
+          />
 
-          <button disabled={loading} onClick={updateBatchStatus} className="px-4 py-2 rounded bg-indigo-600 text-white mb-4">
-            {loading ? "Sending..." : "Update Status"}
+          <button 
+            disabled={loading} 
+            onClick={updateBatchStatus} 
+            className="w-full px-4 py-3 rounded bg-purple-600 hover:bg-purple-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors mb-4"
+          >
+            {loading ? "Processing..." : "Update Status"}
           </button>
 
-          <hr className="mb-4" />
+          <hr className="border-slate-700 mb-4" />
 
-          <h3 className="font-semibold mb-2">Generate DDS Report</h3>
-          <button disabled={loading} onClick={generateDDS} className="px-4 py-2 rounded bg-gray-800 text-white">
+          <h3 className="text-sm font-semibold mb-3 text-slate-400">📄 Generate DDS Report</h3>
+          <button 
+            disabled={loading} 
+            onClick={generateDDS} 
+            className="w-full px-4 py-3 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
             {loading ? "Generating..." : "Generate DDS"}
           </button>
 
           {ddsReport && (
-            <pre className="mt-3 p-2 bg-gray-100 rounded text-xs overflow-auto">{JSON.stringify(ddsReport, null, 2)}</pre>
+            <div className="mt-4">
+              <p className="text-xs text-slate-400 mb-2">DDS Report:</p>
+              <pre className="p-3 bg-slate-900 rounded text-xs overflow-auto max-h-64 border border-slate-700">
+                {JSON.stringify(ddsReport, null, 2)}
+              </pre>
+            </div>
           )}
         </section>
       </div>
 
-      {txMsg && <div className="mt-4 p-2 bg-gray-200 rounded">{txMsg}</div>}
+      {txMsg && (
+        <div className={`mt-6 p-4 rounded-lg border ${
+          txMsg.includes("Error") 
+            ? "bg-red-900/20 border-red-700 text-red-400" 
+            : "bg-green-900/20 border-green-700 text-green-400"
+        }`}>
+          <p className="text-sm">{txMsg}</p>
+        </div>
+      )}
     </div>
   );
 }
