@@ -115,3 +115,63 @@ This command will start a fresh validator, deploy the program, and run the tests
     3.  On success, the frontend sends the *full* polygon data to the off-chain backend.
     4.  The backend performs expensive computations (GEE, LLM).
     5.  The backend sends a final on-chain transaction to `validate_farm_plot`.
+
+---
+
+## Development on Windows via WSL
+
+For developers on Windows, this project is designed to be run within the **Windows Subsystem for Linux (WSL)**. While your host operating system is Windows, the entire terminal-based workflow (installing tools, building, running servers) happens inside a Linux (Ubuntu) environment.
+
+*   **Your Primary Tool:** Your main entry point for all commands will be the **Ubuntu Terminal** that you have installed via WSL.
+*   **VS Code Integration:** It is highly recommended to install the **Remote - WSL** extension in VS Code. This allows you to open the project folder from within WSL (`code .` in the terminal) and makes your integrated VS Code terminal a seamless Ubuntu shell.
+
+### Execution Environment
+
+| Task / Command                                   | Where It Runs                | Notes                                                                              |
+| ------------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------------- |
+| Running `./scripts/setup.sh`                     | **WSL (Ubuntu Terminal)**    | Installs all dependencies like Rust, Solana, Anchor, and Node.js inside Linux.   |
+| `anchor build`, `anchor deploy`, `anchor test`     | **WSL (Ubuntu Terminal)**    | The Solana/Anchor toolchain is built for Linux and must run there.               |
+| `npm run dev` (for the backend service)          | **WSL (Ubuntu Terminal)**    | The Node.js server runs inside Linux.                                              |
+| `yarn dev` (for the frontend application)        | **WSL (Ubuntu Terminal)**    | The Vite development server runs inside Linux.                                     |
+| Accessing the web application (`http://localhost:5173`) | **Windows (Web Browser)**    | WSL automatically forwards ports, so you can access services running inside WSL from your Windows browser. |
+| Editing Code                                     | **Windows (VS Code)**        | You edit files as you normally would, and VS Code handles the connection to WSL.   |
+
+---
+
+## Implementation Checklist
+
+This checklist summarizes the key features and setup steps that have been completed for the FarmTrace application.
+
+### Environment & Setup
+- [x] Create a comprehensive `setup.sh` script to automate the installation of all dependencies (Rust, Solana, Anchor, NVM, Node, Yarn).
+- [x] Troubleshoot and resolve environment-specific issues (`rust-toolchain.toml` override, PATH sourcing).
+- [x] Generate `GEMINI.md` to provide project context and instructions.
+
+### On-Chain Program (`programs/farmtrace`)
+- [x] Define `FarmPlot` account with fields for `polygon_hash`, `is_validated`, and `validator` public key.
+- [x] Implement `register_farm_plot` instruction to create a plot with a hash of its coordinates.
+- [x] Implement `validate_farm_plot` instruction, secured by a `has_one = validator` constraint.
+- [x] Define `HarvestBatch` account and associated `register_harvest_batch` instruction.
+- [x] Create events for all major instructions (`FarmPlotRegistered`, `FarmPlotValidated`, etc.).
+
+### Frontend Application (`app`)
+- [x] Integrate Leaflet and React-Leaflet for an interactive map UI.
+- [x] Integrate Leaflet-Draw for polygon drawing capabilities.
+- [x] Capture polygon coordinates and trigger the on-chain `register_farm_plot` instruction.
+- [x] Implement the client-side `fetch` call to notify the backend service after successful plot registration.
+
+### Backend Service (`backend`)
+- [x] Set up an Express server to receive validation requests from the frontend.
+- [x] Implement logic to securely store and load API keys and credentials from a `.env` file.
+- [x] **Google Earth Engine (GEE) Integration:**
+    - [x] Authenticate with GEE using a service account.
+    - [x] Implement a function (`fetchImagesFromGEE`) to query Sentinel-2 satellite imagery based on plot coordinates and date ranges.
+- [x] **LLM Deforestation Detection (Gemini):**
+    - [x] Integrate the Google Generative AI SDK.
+    - [x] Implement a function (`detectDeforestation`) that sends the GEE images to the Gemini Pro Vision model.
+    - [x] Construct a prompt asking the LLM to analyze the images for deforestation and return a structured JSON response.
+    - [x] Parse the LLM's response to determine the validation outcome.
+- [x] **On-Chain Validation Call:**
+    - [x] Implement a function (`updateOnChainValidation`) that loads a dedicated validator keypair.
+    - [x] Connect to the Solana network using the Anchor provider.
+    - [x] Call the `validateFarmPlot` instruction on the smart contract to finalize validation on-chain.
