@@ -299,10 +299,73 @@ const detectDeforestation = async (recentImageUrl: string, historicalImageUrl: s
     }
 };
 // Program ID from farmtrace/lib.rs
-const PROGRAM_ID = new PublicKey("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
+const PROGRAM_ID = new PublicKey("HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF");
 
 // Validator keypair path
 const VALIDATOR_KEYPAIR_PATH = path.join(__dirname, '..', 'validator-keypair.json');
+
+const registerFarmPlotOnChain = async (
+    plotId: string,
+    farmerKey: string,
+    polygonCoordinates: PolygonCoordinates
+) => {
+    console.log(`[Solana_Service] Registering plot ${plotId} on-chain...`);
+
+    try {
+        const validatorKeypair = Keypair.fromSecretKey(
+            Uint8Array.from(JSON.parse(fs.readFileSync(VALIDATOR_KEYPAIR_PATH, 'utf-8')))
+        );
+
+        const farmerPublicKey = new PublicKey(farmerKey);
+        const [farmPlotPDA] = PublicKey.findProgramAddressSync(
+            [Buffer.from("farm_plot"), Buffer.from(plotId), farmerPublicKey.toBuffer()],
+            PROGRAM_ID
+        );
+
+        const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+        const provider = new anchor.AnchorProvider(
+            connection,
+            new anchor.Wallet(validatorKeypair),
+            { commitment: "confirmed" }
+        );
+        anchor.setProvider(provider);
+
+        const program = new anchor.Program(idl as unknown as Farmtrace, provider);
+
+        // Compute polygon hash
+        const crypto = require('crypto');
+        const polygonHash = crypto
+            .createHash('sha256')
+            .update(JSON.stringify(polygonCoordinates))
+            .digest('hex');
+
+        // Call register_farm_plot
+        const tx = await program.methods
+            .registerFarmPlot(
+                plotId,
+                "Farmer",              // farmer_name
+                "Farm Location",       // location
+                polygonHash,           // polygon_hash
+                1.0,                   // area_hectares
+                { cocoa: {} },         // commodity_type (adjust enum as needed)
+                new anchor.BN(Math.floor(Date.now() / 1000))  // registration_timestamp
+            )
+            .accounts({
+                farmPlot: farmPlotPDA,
+                farmer: farmerPublicKey,
+                validator: validatorKeypair.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId,
+            })
+            .signers([validatorKeypair])
+            .rpc();
+
+        console.log(`[Solana_Service] Plot ${plotId} registered on-chain: ${tx}`);
+    } catch (error) {
+        console.error(`[Solana_Service] Error registering plot ${plotId}:`, error);
+        throw error;
+    }
+};
+
 
 const updateOnChainValidation = async (plotId: string, farmerKey: string) => {
     console.log(`[Solana_Service] Received request to validate plot ${plotId} on-chain.`);
@@ -367,11 +430,12 @@ export const triggerValidation = async (plotId: string, farmerKey: string, polyg
         const isDeforestationDetected = await detectDeforestation(images.recent, images.historical);
         console.log(`[ValidationService] ...LLM analysis complete. Deforestation detected: ${isDeforestationDetected}`);
 
-        // Step 4: Update on-chain validation status
+        // Step 4: Register and validate on-chain if no deforestation
         if (!isDeforestationDetected) {
             console.log(`[ValidationService] Updating on-chain validation status...`);
             await updateOnChainValidation(plotId, farmerKey);
             console.log(`[ValidationService] ...On-chain status updated successfully.`);
+
         } else {
             console.log(`[ValidationService] Validation failed: Deforestation detected. No on-chain update.`);
         }

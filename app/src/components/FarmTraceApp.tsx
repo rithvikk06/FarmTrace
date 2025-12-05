@@ -6,7 +6,7 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import MapComponent from "./MapComponent";
 import SHA256 from 'crypto-js/sha256';
 
-const PROGRAM_ID = new PublicKey("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
+const PROGRAM_ID = new PublicKey("HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF");
 
 const commodityOptions = [
   "Cocoa", "Coffee", "PalmOil", "Soy", "Cattle", "Rubber", "Timber"
