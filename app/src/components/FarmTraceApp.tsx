@@ -75,7 +75,7 @@ export default function FarmTraceApp() {
   // Check backend connection on startup
   useEffect(() => {
     const checkBackendConnection = async () => {
-      const backendUrl = `${import.meta.env.VITE_API_BASE_URL}/health`;
+      const backendUrl = `${(import.meta as any).env.VITE_API_BASE_URL}/health`;
       if (!backendUrl) {
           console.warn("[Backend Check] VITE_API_BASE_URL is not set in .env file.");
           return;
@@ -145,7 +145,7 @@ export default function FarmTraceApp() {
   }
 
   const registerFarmPlot = async () => {
-    const validatorPublicKey = import.meta.env.VITE_VALIDATOR_PUBLIC_KEY;
+    const validatorPublicKey = (import.meta as any).env.VITE_VALIDATOR_PUBLIC_KEY;
     if (!program || !publicKey || !polygonCoords || !validatorPublicKey) {
         setTxMsg("Error: Please draw a polygon on the map and ensure VITE_VALIDATOR_PUBLIC_KEY is set in your .env file.");
         return;
@@ -185,7 +185,7 @@ export default function FarmTraceApp() {
       setTxMsg(registrationTxMsg + " Initiating automatic validation...");
 
       try {
-        const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/initiate-validation`;
+        const apiUrl = `${(import.meta as any).env.VITE_API_BASE_URL}/initiate-validation`;
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
