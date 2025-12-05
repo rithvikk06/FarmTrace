@@ -27,7 +27,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ onCoordsChange }) => {
   };
 
   return (
-    <MapContainer center={[51.505, -0.09]} zoom={5} style={{ height: '300px', width: '100%', borderRadius: '8px' }}>
+    <MapContainer center={[40, -60]} zoom={4} style={{ height: '500px', width: '100%', borderRadius: '8px' }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
