@@ -130,7 +130,7 @@ export default function FarmTraceApp() {
     try {
       setLoading(true);
       // Fetch all farm plots and filter client-side by farmer public key
-      const accounts = await program.account.farmPlot.all();
+      const accounts = await (program.account as any).farmPlot.all();
       
       const plots: FarmPlot[] = accounts
         .filter((acc: any) => acc.account.farmer.toString() === publicKey.toString())
@@ -161,7 +161,7 @@ export default function FarmTraceApp() {
     
     try {
       setLoading(true);
-      const accounts = await program.account.harvestBatch.all([
+      const accounts = await (program.account as any).harvestBatch.all([
         {
           memcmp: {
             offset: 8 + 32, // discriminator + batchId
