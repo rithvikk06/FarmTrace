@@ -48,6 +48,6 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'Backend is healthy and running.' });
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Backend server listening at http://localhost:${port}`);
 });
