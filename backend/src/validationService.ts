@@ -330,7 +330,6 @@ const updateOnChainValidation = async (plotId: string, farmerKey: string) => {
             [Buffer.from("farm_plot"), Buffer.from(plotId), farmerPublicKey.toBuffer()],
             PROGRAM_ID
         );
-
         // 5. Call the validateFarmPlot instruction
         const tx = await program.methods
             .validateFarmPlot()

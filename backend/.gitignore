@@ -9,6 +9,7 @@
 
 # Plot data
 /plot-data
+/images
 
 #credentials
 gee-credentials.json
