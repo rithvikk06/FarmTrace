@@ -1,7 +1,7 @@
 // @ts-ignore
 import ee from '@google/earthengine';
 import { promisify } from 'util';
-import path from 'path';
+import * as path from 'path';
 import { config } from 'dotenv';
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
 import * as anchor from "@coral-xyz/anchor";
@@ -9,14 +9,36 @@ import { Connection, Keypair, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { Program } from "@coral-xyz/anchor";
 import type { Farmtrace } from './types/farmtrace';
 import * as idl from "./idl/farmtrace.json";
+import * as fs from 'fs';
+
+const IMAGES_DIR = path.join(__dirname, '..', 'images');
 
 type PolygonCoordinates = number[][];
 
+const saveUrlAsImage = async (url: string, filePath: string) => {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+        }
+        const buffer = await response.arrayBuffer();
+        await fs.promises.writeFile(filePath, Buffer.from(buffer));
+        console.log(`[GEE_Service] Saved image to ${filePath}`);
+    } catch (error) {
+        console.error(`[GEE_Service] Error saving image to ${filePath}:`, error);
+        // We don't want to fail the whole process if image saving fails
+    }
+};
+
 const urlToBase64 = async (url: string): Promise<string> => {
+    console.log('[LLM_Service] Fetching URL:', url);
     const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+    }
     const buffer = await response.arrayBuffer();
     return Buffer.from(buffer).toString('base64');
-  };
+};
 
 config({ path: path.resolve(__dirname, '..', '.env') });
 
@@ -29,16 +51,17 @@ if (!GEE_SERVICE_ACCOUNT || !GEE_PRIVATE_KEY_PATH || !GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const geminiProVision = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+const geminiProVision = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 
 const initializeGEE = () => new Promise<void>((resolve, reject) => {
     console.log('[GEE_Service] Initializing Google Earth Engine...');
+
+    const keyFilePath = GEE_PRIVATE_KEY_PATH; // path to the JSON you showed
+    const keyJson = JSON.parse(fs.readFileSync(keyFilePath, 'utf8'));
+
     ee.data.authenticateViaPrivateKey(
-        {
-            client_email: GEE_SERVICE_ACCOUNT,
-            private_key: require('fs').readFileSync(GEE_PRIVATE_KEY_PATH, 'utf8')
-        },
+        keyJson,
         () => {
             console.log('[GEE_Service] GEE authentication successful.');
             ee.initialize(null, null, () => {
@@ -56,48 +79,136 @@ const initializeGEE = () => new Promise<void>((resolve, reject) => {
     );
 });
 
-const fetchImagesFromGEE = (polygonCoordinates: PolygonCoordinates[]): Promise<{ recent: string, historical: string }> => {
+const fetchImagesFromGEE = (
+    plotId: string,
+    polygonCoordinates: PolygonCoordinates
+): Promise<{ recent: string; historical: string }> => {
     return new Promise((resolve, reject) => {
         try {
             console.log('[GEE_Service] Fetching images for polygon:', polygonCoordinates);
-            const polygon = ee.Geometry.Polygon(polygonCoordinates);
-            const region = polygon.bounds();
 
-            const collection = ee.ImageCollection('COPERNICUS/S2_SR')
+            // Flip coordinates from [lat, lon] to [lon, lat] for GEE
+            const flippedCoordinates: number[][] = polygonCoordinates.map(([lat, lon]: number[]) => [lon, lat]);
+
+            const polygon = ee.Geometry.Polygon(flippedCoordinates);
+            const region = polygon.buffer(200).bounds();
+
+            // Base Sentinel-2 SR collection, clipped to region and low-cloud scenes
+            const baseCollection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                 .filterBounds(region)
-                .sort('CLOUDY_PIXEL_PERCENTAGE', false);
+                .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', 40)) // little to no clouds
+                .sort('CLOUDY_PIXEL_PERCENTAGE'); // lowest-cloud images first
 
-            const recentImage = collection
-                .filterDate(ee.Date(Date.now()).advance(-1, 'month'), ee.Date(Date.now()))
-                .mosaic()
-                .visualize({ bands: ['B4', 'B3', 'B2'], min: 0, max: 3000 });
+            // Helper to get size().getInfo as a Promise
+            const getSize = (ic: any) =>
+                new Promise<number>((res, rej) => {
+                    ic.size().getInfo((v: number, err: any) => {
+                        if (err) rej(err);
+                        else res(v);
+                    });
+                });
 
-            const historicalImage = collection
-                .filterDate(ee.Date(Date.now()).advance(-4, 'month'), ee.Date(Date.now()).advance(-3, 'month'))
-                .mosaic()
-                .visualize({ bands: ['B4', 'B3', 'B2'], min: 0, max: 3000 });
+            // Dates
+            const now = ee.Date(Date.now());
 
-            const getUrl = promisify(recentImage.getThumbURL.bind(recentImage));
-            const getUrlHistorical = promisify(historicalImage.getThumbURL.bind(historicalImage));
+            // Recent: last 30 days
+            const recentStart = now.advance(-30, 'day');
+            const recentEnd = now;
+
+            // Historical: 6 to 3 months before now
+            const histStart = now.advance(-6, 'month');
+            const histEnd = now.advance(-3, 'month');
+
+            const recentCollection = baseCollection.filterDate(recentStart, recentEnd);
+            const historicalCollection = baseCollection.filterDate(histStart, histEnd);
 
             Promise.all([
-                getUrl({ format: 'jpg', dimensions: 512, region: region.toGeoJSON() }),
-                getUrlHistorical({ format: 'jpg', dimensions: 512, region: region.toGeoJSON() })
+                getSize(recentCollection),
+                getSize(historicalCollection),
             ])
-            .then(([recentUrl, historicalUrl]) => {
-                console.log('[GEE_Service] Generated image URLs.');
-                resolve({ recent: recentUrl, historical: historicalUrl });
-            })
-            .catch(err => {
-                console.error('[GEE_Service] Failed to generate image URLs:', err);
-                reject(err);
-            });
+                .then(([recentSize, historicalSize]) => {
+                    console.log(`[GEE_Service] recent collection size = ${recentSize}`);
+                    console.log(`[GEE_Service] historical collection size = ${historicalSize}`);
+
+                    if (recentSize === 0) {
+                        throw new Error('No recent low-cloud Sentinel-2 images found for this region/time window.');
+                    }
+                    if (historicalSize === 0) {
+                        throw new Error('No historical low-cloud Sentinel-2 images found for this region/time window.');
+                    }
+
+                    console.log('[GEE_Service] Building recent and historical images...');
+
+                    // Natural-color RGB visParams for Sentinel-2 SR (looks like normal satellite view)
+                    const visParams = {
+                        bands: ['B4', 'B3', 'B2'],
+                        min: 500,      // Or [500, 500, 500] per band; clips shadows/clouds
+                        max: 2500,     // Or [2500, 2500, 2500]; prevents blown-out highlights (DN range 0-10000)
+                        gamma: 1.4     // Boosts mid-tones for vegetation/land contrast
+                    };
+
+                    // Thumbnail parameters
+                    const thumbParams = {
+                        format: 'jpg',
+                        dimensions: 512,
+                        region: region
+                    };
+
+                    // SCL-based cloud/snow mask
+                    const maskClouds = (img: any) => {
+                        const scl = img.select('SCL');
+                        const cloudMask = scl.neq(3)  // not cloud shadow
+                            .and(scl.neq(8))          // not cloud
+                            .and(scl.neq(9))          // not high-probability cloud
+                            .and(scl.neq(10))         // not thin cirrus
+                            .and(scl.neq(11));        // not snow/ice
+                        return img.updateMask(cloudMask);
+                    };
+
+                    const recentImage = maskClouds(recentCollection.first()).visualize(visParams);
+                    const historicalImage = maskClouds(historicalCollection.first()).visualize(visParams);
+
+                    console.log('[GEE_Service] Calling getThumbURL (recent) with callback...');
+                    recentImage.getThumbURL(thumbParams, (recentUrl: string, recentErr: any) => {
+                        console.log('[GEE_Service] recent getThumbURL callback url=', recentUrl, 'err=', recentErr);
+
+                        if (recentErr || !recentUrl) {
+                            return reject(recentErr || new Error('No recent thumbnail URL returned.'));
+                        }
+
+                        console.log('[GEE_Service] Calling getThumbURL (historical) with callback...');
+                        historicalImage.getThumbURL(thumbParams, (historicalUrl: string, historicalErr: any) => {
+                            console.log('[GEE_Service] historical getThumbURL callback url=', historicalUrl, 'err=', historicalErr);
+
+                            if (historicalErr || !historicalUrl) {
+                                return reject(historicalErr || new Error('No historical thumbnail URL returned.'));
+                            }
+
+                            console.log('[GEE_Service] Generated image URLs.');
+
+                            fs.promises.mkdir(IMAGES_DIR, { recursive: true }).then(() => {
+                                Promise.all([
+                                    saveUrlAsImage(recentUrl, path.join(IMAGES_DIR, `recent-${plotId}.jpg`)),
+                                    saveUrlAsImage(historicalUrl, path.join(IMAGES_DIR, `historical-${plotId}.jpg`))
+                                ]).then(() => {
+                                    resolve({ recent: recentUrl, historical: historicalUrl });
+                                });
+                            });
+                        });
+                    });
+                })
+                .catch(err => {
+                    console.error('[GEE_Service] Failed to build image URLs:', err);
+                    reject(err);
+                });
         } catch (error) {
             console.error('[GEE_Service] An error occurred in fetchImagesFromGEE:', error);
             reject(error);
         }
     });
 };
+
+
 
 const detectDeforestation = async (recentImageUrl: string, historicalImageUrl: string): Promise<boolean> => {
     console.log('[LLM_Service] Received images for deforestation analysis:');
@@ -240,7 +351,7 @@ const updateOnChainValidation = async (plotId: string, farmerKey: string) => {
 
 // --- MAIN VALIDATION ORCHESTRATOR ---
 
-export const triggerValidation = async (plotId: string, farmerKey: string, polygonCoordinates: PolygonCoordinates[]) => {
+export const triggerValidation = async (plotId: string, farmerKey: string, polygonCoordinates: PolygonCoordinates) => {
     console.log(`[ValidationService] Starting validation for plot: ${plotId}`);
 
     try {
@@ -249,8 +360,8 @@ export const triggerValidation = async (plotId: string, farmerKey: string, polyg
 
         // Step 2: Fetch satellite imagery from GEE
         console.log(`[ValidationService] Fetching satellite imagery from GEE...`);
-        const images = await fetchImagesFromGEE(polygonCoordinates);
-        console.log(`[ValidationService] ...GEE image fetch complete.`, images);
+        const images = await fetchImagesFromGEE(plotId, polygonCoordinates);
+        console.log(`[ValidationService] GEE image URLs received: recent=${images.recent}, historical=${images.historical}`);
 
         // Step 3: Perform deforestation detection with LLM
         console.log(`[ValidationService] Performing deforestation analysis with LLM...`);
