@@ -77,6 +77,30 @@ export default function FarmTraceApp() {
     }
   }, [program]);
 
+  // Check backend connection on startup
+  useEffect(() => {
+    const checkBackendConnection = async () => {
+      const backendUrl = `${(import.meta as any).env.VITE_API_BASE_URL}/health`;
+      try {
+        const response = await fetch(backendUrl);
+        if (response.ok) {
+          console.log(`[Backend Check] Connection successful to ${backendUrl}`);
+        } else {
+          console.error(`[Backend Check] Connection failed to ${backendUrl}. Status: ${response.status}`);
+        }
+      } catch (error) {
+        console.error(`[Backend Check] Connection failed to ${backendUrl}. Error:`, error);
+      }
+    };
+
+    const viteEnv = (import.meta as any).env;
+    if (viteEnv && viteEnv.VITE_API_BASE_URL) {
+        checkBackendConnection();
+    } else {
+        console.warn("[Backend Check] VITE_API_BASE_URL is not set in .env. Skipping backend connection check.");
+    }
+  }, []); // Run only once on component mount
+
   // Form state for plot registration
   const [plotId, setPlotId] = useState("");
   const [farmerName, setFarmerName] = useState("");

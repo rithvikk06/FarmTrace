@@ -43,6 +43,11 @@ app.post('/initiate-validation', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'Backend is healthy and running.' });
+});
+
 app.listen(port, () => {
   console.log(`Backend server listening at http://localhost:${port}`);
 });
