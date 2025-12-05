@@ -1,4 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{Mint, Token, TokenAccount, mint_to, MintTo},
+};
+use mpl_token_metadata::{
+    instructions::{CreateV1, CreateV1InstructionArgs},
+    types::{Creator, TokenStandard},
+};
 
 declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 
@@ -6,7 +14,7 @@ declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 pub mod farmtrace {
     use super::*;
 
-    /// Register a new farm plot with geolocation data
+    /// Register a new farm plot with geolocation data and mint NFT
     /// This creates the foundational NFT for EUDR compliance
     pub fn register_farm_plot(
         ctx: Context<RegisterFarmPlot>,
@@ -28,9 +36,9 @@ pub mod farmtrace {
         // Initialize farm plot data
         farm_plot.plot_id = plot_id.clone();
         farm_plot.farmer = ctx.accounts.farmer.key();
-        farm_plot.farmer_name = farmer_name;
-        farm_plot.location = location;
-        farm_plot.coordinates = coordinates;
+        farm_plot.farmer_name = farmer_name.clone();
+        farm_plot.location = location.clone();
+        farm_plot.coordinates = coordinates.clone();
         farm_plot.area_hectares = area_hectares;
         farm_plot.commodity_type = commodity_type;
         farm_plot.registration_timestamp = registration_timestamp;
@@ -38,16 +46,107 @@ pub mod farmtrace {
         farm_plot.compliance_score = 100;
         farm_plot.last_verified = Clock::get()?.unix_timestamp;
         farm_plot.is_active = true;
+        farm_plot.mint = ctx.accounts.mint.key();
         farm_plot.bump = ctx.bumps.farm_plot;
+        
+        // Mint 1 NFT token to farmer
+        let farmer_key = ctx.accounts.farmer.key();
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"mint",
+            plot_id.as_bytes(),
+            farmer_key.as_ref(),
+            &[ctx.bumps.mint],
+        ]];
+        
+        mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.token_account.to_account_info(),
+                    authority: ctx.accounts.mint.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            1,
+        )?;
+        
+        // Create metadata using mpl-token-metadata v4
+        let commodity_str = match commodity_type {
+            CommodityType::Cocoa => "Cocoa",
+            CommodityType::Coffee => "Coffee",
+            CommodityType::PalmOil => "Palm Oil",
+            CommodityType::Soy => "Soy",
+            CommodityType::Cattle => "Cattle",
+            CommodityType::Rubber => "Rubber",
+            CommodityType::Timber => "Timber",
+        };
+        
+        let metadata_title = format!("FarmTrace: {}", plot_id);
+        let metadata_uri = format!(
+            "https://farmtrace.io/api/metadata/{}",
+            ctx.accounts.mint.key()
+        );
+        
+        // Use CreateV1 instruction from mpl-token-metadata v4
+        let create_metadata_accounts_ix = CreateV1 {
+            metadata: ctx.accounts.metadata.key(),
+            master_edition: None,
+            mint: (ctx.accounts.mint.key(), true),
+            authority: ctx.accounts.mint.key(),
+            payer: ctx.accounts.farmer.key(),
+            update_authority: (ctx.accounts.mint.key(), true),
+            system_program: ctx.accounts.system_program.key(),
+            sysvar_instructions: anchor_lang::solana_program::sysvar::instructions::ID,
+            spl_token_program: Some(ctx.accounts.token_program.key()),
+        };
+        
+        let create_args = CreateV1InstructionArgs {
+            name: metadata_title,
+            symbol: "FARM".to_string(),
+            uri: metadata_uri,
+            seller_fee_basis_points: 0,
+            creators: Some(vec![
+                Creator {
+                    address: ctx.accounts.farmer.key(),
+                    verified: true,
+                    share: 100,
+                }
+            ]),
+            primary_sale_happened: false,
+            is_mutable: true,
+            token_standard: TokenStandard::NonFungible,
+            collection: None,
+            uses: None,
+            collection_details: None,
+            rule_set: None,
+            decimals: Some(0),
+            print_supply: None,
+        };
+        
+        let create_ix = create_metadata_accounts_ix.instruction(create_args);
+        
+        anchor_lang::solana_program::program::invoke_signed(
+            &create_ix,
+            &[
+                ctx.accounts.metadata.to_account_info(),
+                ctx.accounts.mint.to_account_info(),
+                ctx.accounts.farmer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
         
         emit!(FarmPlotRegistered {
             plot_id,
             farmer: farm_plot.farmer,
+            mint: farm_plot.mint,
             coordinates: farm_plot.coordinates.clone(),
             timestamp: registration_timestamp,
         });
         
-        msg!("Farm plot registered successfully!");
+        msg!("Farm plot registered successfully with NFT!");
         Ok(())
     }
 
@@ -217,6 +316,7 @@ pub struct FarmPlot {
     pub compliance_score: u8,
     pub last_verified: i64,
     pub is_active: bool,
+    pub mint: Pubkey,                   // NFT mint address
     pub bump: u8,
 }
 
@@ -255,16 +355,41 @@ pub struct RegisterFarmPlot<'info> {
     #[account(
         init,
         payer = farmer,
-        space = 8 + 400, // discriminator + data
+        space = 8 + 432,
         seeds = [b"farm_plot", plot_id.as_bytes(), farmer.key().as_ref()],
         bump
     )]
     pub farm_plot: Account<'info, FarmPlot>,
     
+    #[account(
+        init,
+        payer = farmer,
+        mint::decimals = 0,
+        mint::authority = mint,
+        seeds = [b"mint", plot_id.as_bytes(), farmer.key().as_ref()],
+        bump
+    )]
+    pub mint: Account<'info, Mint>,
+    
+    #[account(
+        init,
+        payer = farmer,
+        associated_token::mint = mint,
+        associated_token::authority = farmer,
+    )]
+    pub token_account: Account<'info, TokenAccount>,
+    
+    /// CHECK: This is validated by Metaplex
+    #[account(mut)]
+    pub metadata: UncheckedAccount<'info>,
+    
     #[account(mut)]
     pub farmer: Signer<'info>,
     
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]
@@ -334,7 +459,6 @@ pub struct RecordSatelliteVerification<'info> {
     pub system_program: Program<'info, System>,
 }
 
-
 #[derive(Accounts)]
 pub struct GenerateDDSData<'info> {
     #[account(
@@ -402,6 +526,7 @@ pub enum VerificationType {
 pub struct FarmPlotRegistered {
     pub plot_id: String,
     pub farmer: Pubkey,
+    pub mint: Pubkey,
     pub coordinates: String,
     pub timestamp: i64,
 }
