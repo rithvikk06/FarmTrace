@@ -54,12 +54,6 @@ if ! command -v node &> /dev/null; then
     nvm use --lts
 fi
 
-# Install Yarn globally if not already installed
-if ! command -v yarn &> /dev/null; then
-    echo "${YELLOW}Installing Yarn globally...${NC}"
-    npm install -g yarn
-fi
-
 # Check if Solana is installed
 if ! command -v solana &> /dev/null; then
     echo "${YELLOW}Installing Solana...${NC}"
@@ -77,13 +71,9 @@ fi
 
 # --- Project Setup ---
 
-# Remove package-lock.json files to avoid yarn conflicts
-echo "${GREEN}Removing package-lock.json files...${NC}"
-find . -name 'package-lock.json' -type f -delete
-
 # Install root dependencies
 echo "${GREEN}Installing root dependencies...${NC}"
-yarn install
+npm install
 
 # Setup Solana wallet
 if [ ! -f "~/.config/solana/id.json" ]; then
@@ -102,13 +92,13 @@ solana airdrop 2 || echo "${YELLOW}Airdrop may have failed, try again later${NC}
 # Setup frontend
 cd app
 echo "${GREEN}Installing frontend dependencies...${NC}"
-yarn install
+npm install
 cd ..
 
 # Setup backend
 cd backend
 echo "${GREEN}Installing backend dependencies...${NC}"
-yarn install
+npm install
 cd ..
 
 # Build program
@@ -133,5 +123,5 @@ echo "Next steps:"
 echo "1. source ~/.bashrc       # To update your current terminal"
 echo "2. anchor test          # Run tests"
 echo "3. anchor deploy        # Deploy to devnet"
-echo "4. cd app && yarn dev   # Start frontend"
+echo "4. cd app && npm run dev   # Start frontend"
 echo "5. cd backend && npm run dev # Start backend"
