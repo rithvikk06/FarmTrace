@@ -306,15 +306,29 @@ export const useFarmTrace = () => {
 
       try {
         const [harvestBatchPDA] = getHarvestBatchPDA(batchId, wallet.publicKey);
+        const updateTimestamp = Math.floor(Date.now() / 1000);
+        
+        // Derive status_update PDA
+        const [statusUpdatePDA] = PublicKey.findProgramAddressSync(
+          [
+            Buffer.from('batch_update'),
+            Buffer.from(batchId),
+            Buffer.from(new BN(updateTimestamp).toArray('le', 8)),
+          ],
+          PROGRAM_ID
+        );
 
         const tx = await program.methods
           .updateBatchStatus(
             getStatusEnum(newStatus),
-            destination
+            destination,
+            new BN(updateTimestamp) // ← Add timestamp parameter
           )
           .accounts({
             harvestBatch: harvestBatchPDA,
+            statusUpdate: statusUpdatePDA,
             authority: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
 

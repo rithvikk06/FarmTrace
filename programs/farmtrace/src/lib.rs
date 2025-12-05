@@ -8,7 +8,7 @@ use mpl_token_metadata::{
     types::{Creator, TokenStandard},
 };
 
-declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
+declare_id!("3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx");
 
 #[program]
 pub mod farmtrace {
@@ -134,6 +134,8 @@ pub mod farmtrace {
                 ctx.accounts.farmer.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
                 ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.metadata_program.to_account_info(),
+                ctx.accounts.sysvar_instructions.to_account_info(),
             ],
             signer_seeds,
         )?;
@@ -190,31 +192,6 @@ pub mod farmtrace {
         });
         
         msg!("Harvest batch registered successfully!");
-        Ok(())
-    }
-
-    /// Update batch status as it moves through supply chain
-    /// Tracks: Harvested → Processing → InTransit → Delivered
-    pub fn update_batch_status(
-        ctx: Context<UpdateBatchStatus>,
-        new_status: BatchStatus,
-        destination: String,
-    ) -> Result<()> {
-        let batch = &mut ctx.accounts.harvest_batch;
-        
-        require!(destination.len() <= 64, ErrorCode::DestinationTooLong);
-        
-        batch.status = new_status;
-        batch.destination = destination.clone();
-        
-        emit!(BatchStatusUpdated {
-            batch_id: batch.batch_id.clone(),
-            new_status: batch.status,
-            destination,
-            timestamp: Clock::get()?.unix_timestamp,
-        });
-        
-        msg!("Batch status updated successfully!");
         Ok(())
     }
 
@@ -296,7 +273,43 @@ pub mod farmtrace {
         msg!("DDS report generated successfully!");
         Ok(dds_report)
     }
+    
+    /// Update batch status as it moves through supply chain
+    /// Tracks: Harvested → Processing → InTransit → Delivered
+    pub fn update_batch_status(
+        ctx: Context<UpdateBatchStatus>,
+        new_status: BatchStatus,
+        destination: String,
+        update_timestamp: i64, // Add timestamp as parameter
+    ) -> Result<()> {
+        let batch = &mut ctx.accounts.harvest_batch;
+        let update = &mut ctx.accounts.status_update;
+        
+        require!(destination.len() <= 64, ErrorCode::DestinationTooLong);
+        
+        // Update the main batch account
+        batch.status = new_status;
+        batch.destination = destination.clone();
+        
+        // Store the historical update
+        update.batch_id = batch.batch_id.clone();
+        update.status = new_status;
+        update.destination = destination.clone();
+        update.timestamp = update_timestamp;
+        update.bump = ctx.bumps.status_update;
+        
+        emit!(BatchStatusUpdated {
+            batch_id: batch.batch_id.clone(),
+            new_status: batch.status,
+            destination,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        
+        msg!("Batch status updated successfully!");
+        Ok(())
+    }
 }
+
 
 // ============================================================================
 // Account Structures
@@ -386,6 +399,12 @@ pub struct RegisterFarmPlot<'info> {
     #[account(mut)]
     pub farmer: Signer<'info>,
     
+    /// CHECK: Metaplex Token Metadata Program
+    pub metadata_program: UncheckedAccount<'info>,
+    
+    /// CHECK: Sysvar instructions account for Metaplex CPI
+    pub sysvar_instructions: UncheckedAccount<'info>,
+    
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -416,17 +435,38 @@ pub struct RegisterHarvestBatch<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[account]
+pub struct BatchStatusUpdate {
+    pub batch_id: String,
+    pub status: BatchStatus,
+    pub destination: String,
+    pub timestamp: i64,
+    pub bump: u8,
+}
+
 #[derive(Accounts)]
+#[instruction(new_status: BatchStatus, destination: String, update_timestamp: i64)]
 pub struct UpdateBatchStatus<'info> {
-    #[account(
-        mut,
-        seeds = [b"harvest_batch", harvest_batch.batch_id.as_bytes(), authority.key().as_ref()],
-        bump = harvest_batch.bump
-    )]
+    #[account(mut)]
     pub harvest_batch: Account<'info, HarvestBatch>,
+    
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + 150,
+        seeds = [
+            b"batch_update",
+            harvest_batch.batch_id.as_bytes(),
+            &update_timestamp.to_le_bytes()
+        ],
+        bump
+    )]
+    pub status_update: Account<'info, BatchStatusUpdate>,
     
     #[account(mut)]
     pub authority: Signer<'info>,
+    
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]

@@ -1,5 +1,5 @@
 {
-  "address": "FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE",
+  "address": "3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx",
   "metadata": {
     "name": "farmtrace",
     "version": "0.1.0",
@@ -556,25 +556,28 @@
       "accounts": [
         {
           "name": "harvest_batch",
+          "writable": true
+        },
+        {
+          "name": "status_update",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  104,
-                  97,
-                  114,
-                  118,
-                  101,
-                  115,
-                  116,
-                  95,
                   98,
                   97,
                   116,
                   99,
-                  104
+                  104,
+                  95,
+                  117,
+                  112,
+                  100,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -583,8 +586,8 @@
                 "account": "HarvestBatch"
               },
               {
-                "kind": "account",
-                "path": "authority"
+                "kind": "arg",
+                "path": "update_timestamp"
               }
             ]
           }
@@ -593,6 +596,10 @@
           "name": "authority",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -607,11 +614,28 @@
         {
           "name": "destination",
           "type": "string"
+        },
+        {
+          "name": "update_timestamp",
+          "type": "i64"
         }
       ]
     }
   ],
   "accounts": [
+    {
+      "name": "BatchStatusUpdate",
+      "discriminator": [
+        117,
+        199,
+        181,
+        200,
+        148,
+        247,
+        89,
+        211
+      ]
+    },
     {
       "name": "FarmPlot",
       "discriminator": [
@@ -778,6 +802,38 @@
           },
           {
             "name": "Delivered"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchStatusUpdate",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "BatchStatus"
+              }
+            }
+          },
+          {
+            "name": "destination",
+            "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

@@ -6,19 +6,19 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-farmtrace = "5x3fQEN1GFoukV7cxqm9thmJPvztFnnD9hUM1Yc5pLbG"
+farmtrace = "3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx"
 
 [programs.devnet]
-farmtrace = "5x3fQEN1GFoukV7cxqm9thmJPvztFnnD9hUM1Yc5pLbG"
+farmtrace = "3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx"
 
 [programs.mainnet]
-farmtrace = "5x3fQEN1GFoukV7cxqm9thmJPvztFnnD9hUM1Yc5pLbG"
+farmtrace = "3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

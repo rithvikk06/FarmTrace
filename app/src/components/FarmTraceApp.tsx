@@ -5,7 +5,7 @@ import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 
-const PROGRAM_ID = new PublicKey("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
+const PROGRAM_ID = new PublicKey("3JrzoVQatJZz6kAeX7T47SfbRnesm3HfU1BBKxcFKkxx");
 const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 const SYSVAR_RENT_PUBKEY = new PublicKey('SysvarRent111111111111111111111111111111111');
 
@@ -230,15 +230,104 @@ export default function FarmTraceApp() {
     }
   };
 
-  const loadBatchUpdates = async (batch: HarvestBatch) => {
-    setBatchUpdates([
-      {
-        timestamp: batch.harvestTimestamp,
-        status: "Harvested",
-        destination: "",
-        type: "status"
+  const loadBatchUpdates = async (batch: HarvestBatch, plot: FarmPlot) => {
+    if (!program || !publicKey) return;
+    
+    const updates: BatchUpdate[] = [];
+    
+    // Add initial harvest as first update
+    updates.push({
+      timestamp: batch.harvestTimestamp,
+      status: "Harvested",
+      destination: "",
+      type: "status"
+    });
+    
+    try {
+      // Fetch the current batch account to get current status
+      const [batchPDA] = harvestBatchPDA(batch.batchId, publicKey);
+      const batchAccount = await program.account.harvestBatch.fetch(batchPDA);
+      
+      // Get current status from batch account
+      const currentStatus = parseStatus(batchAccount.status);
+      
+      // Try to fetch batch status updates if they exist
+      try {
+        // First check if the account type exists
+        if (program.account.batchStatusUpdate) {
+          const allBatchUpdates = await program.account.batchStatusUpdate.all();
+          
+          // Filter for updates related to this specific batch
+          const batchUpdates = allBatchUpdates.filter((update: any) => 
+            update.account.batchId === batch.batchId
+          );
+          
+          // Add each batch status update to the timeline
+          batchUpdates.forEach((update: any) => {
+            updates.push({
+              timestamp: update.account.timestamp.toNumber(),
+              status: parseStatus(update.account.status),
+              destination: update.account.destination || "",
+              type: "status"
+            });
+          });
+        } else {
+          // If batchStatusUpdate account doesn't exist, check for events
+          console.log("batchStatusUpdate account type not found in IDL");
+          
+          // Fallback: If current status is different from Harvested, add it
+          if (currentStatus !== "Harvested") {
+            updates.push({
+              timestamp: batch.harvestTimestamp + 1,
+              status: currentStatus,
+              destination: batchAccount.destination || "",
+              type: "status"
+            });
+          }
+        }
+      } catch (err) {
+        console.log("Error fetching batch status updates:", err);
+        // Fallback: If current status is different from Harvested, add it
+        if (currentStatus !== "Harvested") {
+          updates.push({
+            timestamp: batch.harvestTimestamp + 1,
+            status: currentStatus,
+            destination: batchAccount.destination || "",
+            type: "status"
+          });
+        }
       }
-    ]);
+      
+      // Fetch all verification records for this farm plot
+      const [farmPDA] = farmPlotPDA(plot.plotId, publicKey);
+      const allVerifications = await program.account.satelliteVerification.all();
+      
+      // Filter verifications for this farm plot
+      const plotVerifications = allVerifications.filter((v: any) => 
+        v.account.farmPlot.toString() === farmPDA.toString()
+      );
+      
+      // Add verification updates
+      plotVerifications.forEach((v: any) => {
+        updates.push({
+          timestamp: v.account.verificationTimestamp.toNumber(),
+          status: "",
+          destination: "",
+          type: "verification",
+          verificationHash: v.account.verificationHash,
+          noDeforestation: v.account.noDeforestation
+        });
+      });
+      
+      // Sort by timestamp
+      updates.sort((a, b) => a.timestamp - b.timestamp);
+      
+      setBatchUpdates(updates);
+    } catch (err) {
+      console.error("Error loading batch updates:", err);
+      // Even on error, show at least the harvest event
+      setBatchUpdates(updates);
+    }
   };
 
   const parseCommodity = (type: any): Commodity => {
@@ -348,7 +437,7 @@ export default function FarmTraceApp() {
           onRegisterBatch={() => setCurrentPage("register-batch")}
           onSelectBatch={(batch) => {
             setSelectedBatch(batch);
-            loadBatchUpdates(batch);
+            loadBatchUpdates(batch, selectedPlot);
             setDdsReport(null);
             setCurrentPage("batch-details");
           }}
@@ -583,7 +672,7 @@ function RegisterPlotPage({
           farmer: publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          metadataProgram: METADATA_PROGRAM_ID,
+          metadataProgram: METADATA_PROGRAM_ID, // ← ADD THIS!
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
         })
@@ -1088,23 +1177,36 @@ function UpdateStatusPage({
     setLoading(true);
     try {
       const [batchPDA] = harvestBatchPDA(batch.batchId, publicKey);
-      const timestamp = Math.floor(Date.now() / 1000);
+      const updateTimestamp = Math.floor(Date.now() / 1000);
+      
+      // Derive the status_update PDA with the timestamp
+      const [statusUpdatePDA] = web3.PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("batch_update"),
+          Buffer.from(batch.batchId),
+          Buffer.from(new BN(updateTimestamp).toArray("le", 8))
+        ],
+        PROGRAM_ID
+      );
 
       const tx = await program.methods
         .updateBatchStatus(
           statusToEnum(status),
-          destination
+          destination,
+          new BN(updateTimestamp)
         )
         .accounts({
           harvestBatch: batchPDA,
+          statusUpdate: statusUpdatePDA,
           authority: publicKey,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       console.log("Transaction signature:", tx);
       
       onSuccess({
-        timestamp,
+        timestamp: updateTimestamp,
         status,
         destination,
         type: "status"
