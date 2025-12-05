@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useConnection, useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
 import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import MapComponent from "./MapComponent"; // Import the map
@@ -65,11 +66,11 @@ export default function FarmTraceApp() {
     const initProgram = async () => {
       if (wallet && connection) {
         try {
-          const idl = await Program.fetchIdl(PROGRAM_ID, provider!);
+          const idl = await Program.fetchIdl(PROGRAM_ID, provider);
           if (!idl) {
             throw new Error("IDL not found");
           }
-          const program = new Program(idl as any, provider!);
+          const program = new Program(idl as any, provider);
           setProgram(program);
         } catch (err) {
           console.error("Error creating program:", err);
@@ -302,8 +303,8 @@ export default function FarmTraceApp() {
       setDdsReport(dds);
       setTxMsg("DDS report generated successfully!");
     } catch (err: any) {
-      console.error("generateDDS error:", err);
-      setTxMsg("Error: " + (err?.message || "Failed to generate DDS report"));
+      console.error("registerFarmPlot error:", err);
+      onError(err?.message || "Failed to register farm plot");
     } finally {
       setLoading(false);
     }
@@ -391,7 +392,7 @@ export default function FarmTraceApp() {
         }`}>
           <p className="text-sm">{txMsg}</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
