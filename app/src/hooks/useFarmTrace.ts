@@ -4,7 +4,7 @@ import { PublicKey, SystemProgram } from '@solana/web3.js';
 import { useState, useCallback, useMemo } from 'react';
 import idl from '../idl/farmtrace.json';
 
-const PROGRAM_ID = new PublicKey(import.meta.env.VITE_PROGRAM_ID || 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
+const PROGRAM_ID = new PublicKey((import.meta as any).env.VITE_PROGRAM_ID || 'HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF');
 
 export interface FarmPlotData {
   plotId: string;
@@ -64,7 +64,7 @@ export const useFarmTrace = () => {
   // Get program instance
   const program = useMemo(() => {
     if (!provider) return null;
-    return new Program(idl as Idl, PROGRAM_ID, provider);
+    return new Program(idl as Idl, provider);
   }, [provider]);
 
   // Derive PDA for farm plot
@@ -294,7 +294,7 @@ export const useFarmTrace = () => {
         if (!farmerKey) return null;
 
         const [farmPlotPDA] = getFarmPlotPDA(plotId, farmerKey);
-        const farmPlotAccount = await program.account.farmPlot.fetch(farmPlotPDA);
+        const farmPlotAccount = await (program as any).account.farmPlot.fetch(farmPlotPDA);
 
         return {
           plotId: farmPlotAccount.plotId,
@@ -326,7 +326,7 @@ export const useFarmTrace = () => {
         if (!farmerKey) return null;
 
         const [harvestBatchPDA] = getHarvestBatchPDA(batchId, farmerKey);
-        const batchAccount = await program.account.harvestBatch.fetch(harvestBatchPDA);
+        const batchAccount = await (program as any).account.harvestBatch.fetch(harvestBatchPDA);
 
         return {
           batchId: batchAccount.batchId,

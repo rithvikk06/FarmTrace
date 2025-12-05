@@ -6,13 +6,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-farmtrace = "FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE"
+farmtrace = "HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF"
 
 [programs.devnet]
-farmtrace = "FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE"
+farmtrace = "HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF"
 
 [programs.mainnet]
-farmtrace = "FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE"
+farmtrace = "HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF"
 
 [registry]
 url = "https://api.apr.dev"
