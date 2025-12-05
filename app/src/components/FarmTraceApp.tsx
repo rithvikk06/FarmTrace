@@ -156,33 +156,38 @@ export default function FarmTraceApp() {
   };
 
   // Fetch harvest batches for a specific plot
-  const fetchHarvestBatches = async (plotPubkey: string) => {
+  const fetchHarvestBatches = async (plotId: string) => {
     if (!program || !publicKey) return;
     
     try {
       setLoading(true);
-      const accounts = await (program.account as any).harvestBatch.all([
-        {
-          memcmp: {
-            offset: 8 + 32, // discriminator + batchId
-            bytes: plotPubkey,
-          }
-        }
-      ]);
+      // Fetch all harvest batches for this farmer
+      const accounts = await program.account.harvestBatch.all();
       
-      const batches: HarvestBatch[] = accounts.map((acc: any) => ({
-        batchId: acc.account.batchId,
-        farmPlot: acc.account.farmPlot.toString(),
-        weightKg: acc.account.weightKg.toNumber(),
-        harvestTimestamp: acc.account.harvestTimestamp.toNumber(),
-        status: parseStatus(acc.account.status),
-        complianceStatus: parseComplianceStatus(acc.account.complianceStatus),
-        destination: acc.account.destination,
-      }));
+      // Get the farm plot PDA to compare against
+      const [farmPDA] = farmPlotPDA(plotId, publicKey);
+      
+      const batches: HarvestBatch[] = accounts
+        .filter((acc: any) => {
+          // Filter by farmer first
+          return acc.account.farmer.toString() === publicKey.toString() &&
+                // Then filter by farm plot
+                acc.account.farmPlot.toString() === farmPDA.toString();
+        })
+        .map((acc: any) => ({
+          batchId: acc.account.batchId,
+          farmPlot: acc.account.farmPlot.toString(),
+          weightKg: acc.account.weightKg.toNumber(),
+          harvestTimestamp: acc.account.harvestTimestamp.toNumber(),
+          status: parseStatus(acc.account.status),
+          complianceStatus: parseComplianceStatus(acc.account.complianceStatus),
+          destination: acc.account.destination,
+        }));
       
       setHarvestBatches(batches);
     } catch (err) {
       console.error("Error fetching harvest batches:", err);
+      setMessage({type: 'error', text: 'Failed to fetch harvest batches. Check console for details.'});
     } finally {
       setLoading(false);
     }
@@ -193,6 +198,12 @@ export default function FarmTraceApp() {
       fetchFarmPlots();
     }
   }, [publicKey, program, currentPage]);
+
+  useEffect(() => {
+    if (publicKey && program && currentPage === 'plot-detail' && selectedPlot) {
+      fetchHarvestBatches(selectedPlot.plotId);
+    }
+  }, [publicKey, program, currentPage, selectedPlot]);
 
   const registerFarmPlot = async () => {
     const validatorPublicKey = (import.meta as any).env.VITE_VALIDATOR_PUBLIC_KEY;
@@ -302,7 +313,7 @@ export default function FarmTraceApp() {
       // Navigate back to plot detail after a brief delay
       setTimeout(() => {
         setCurrentPage('plot-detail');
-        fetchHarvestBatches(farmPDA.toString());
+        fetchHarvestBatches(selectedPlot.plotId);
       }, 2000);
       
     } catch (err: any) {
@@ -458,8 +469,7 @@ export default function FarmTraceApp() {
                   onClick={() => {
                     setSelectedPlot(plot);
                     setCurrentPage('plot-detail');
-                    const [farmPDA] = farmPlotPDA(plot.plotId, publicKey);
-                    fetchHarvestBatches(farmPDA.toString());
+                    fetchHarvestBatches(plot.plotId);
                   }}
                   className="p-6 bg-slate-800 border border-slate-700 rounded-lg hover:border-green-500 cursor-pointer transition-all"
                 >
