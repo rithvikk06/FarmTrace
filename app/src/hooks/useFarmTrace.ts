@@ -1,7 +1,7 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { Program, AnchorProvider, web3, BN, Idl } from '@coral-xyz/anchor';
 import { PublicKey, SystemProgram } from '@solana/web3.js';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import idl from '../idl/farmtrace.json';
 
 const PROGRAM_ID = new PublicKey((import.meta as any).env.VITE_PROGRAM_ID || 'HYubBywfVs4LzqZnP5dqrnxYqCMHTCd2vqKLpvj8KofF');
@@ -402,6 +402,85 @@ export const useFarmTrace = () => {
     getFarmPlotPDA,
     getHarvestBatchPDA,
   };
+};
+
+export const useHarvestBatchesForPlot = (farmPlotPublicKey: PublicKey | null | undefined) => {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const [harvestBatches, setHarvestBatches] = useState<HarvestBatchData[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(true);
+  const [errorBatches, setErrorBatches] = useState<string | null>(null);
+
+  const provider = useMemo(() => {
+    if (!wallet.publicKey || !wallet.signTransaction) {
+      return null;
+    }
+    return new AnchorProvider(
+      connection,
+      wallet as any,
+      { commitment: 'confirmed' }
+    );
+  }, [connection, wallet]);
+
+  const program = useMemo(() => {
+    if (!provider) return null;
+    return new Program(idl as Idl, provider);
+  }, [provider]);
+
+  const getHarvestBatchData = useCallback(
+    async (batchAccount: any): Promise<HarvestBatchData | null> => {
+      try {
+        return {
+          batchId: batchAccount.batchId,
+          farmPlot: batchAccount.farmPlot.toString(),
+          weightKg: batchAccount.weightKg.toNumber(),
+          harvestTimestamp: new Date(batchAccount.harvestTimestamp.toNumber() * 1000),
+          status: parseStatus(batchAccount.status),
+          complianceStatus: parseComplianceStatus(batchAccount.complianceStatus),
+          destination: batchAccount.destination,
+        };
+      } catch (err: any) {
+        console.error('Error parsing harvest batch:', err);
+        return null;
+      }
+    }, []
+  );
+
+  const fetchHarvestBatches = useCallback(async () => {
+    if (!program || !farmPlotPublicKey) {
+      setHarvestBatches([]);
+      setLoadingBatches(false);
+      return;
+    }
+
+    setLoadingBatches(true);
+    setErrorBatches(null);
+
+    try {
+      const allHarvestBatches = await (program as any).account.harvestBatch.all();
+      const relevantAccounts = allHarvestBatches.filter((batch: any) =>
+        batch.account.farmPlot.equals(farmPlotPublicKey)
+      );
+      const parsed = await Promise.all(
+        relevantAccounts.map((batch: any) => getHarvestBatchData(batch.account))
+      );
+      const filteredBatches = parsed.filter((b: HarvestBatchData | null): b is HarvestBatchData => b !== null);
+
+      setHarvestBatches(filteredBatches);
+    } catch (err: any) {
+      console.error('Error fetching harvest batches:', err);
+      setErrorBatches(err?.message ?? String(err));
+    } finally {
+      setLoadingBatches(false);
+    }
+  }, [program, farmPlotPublicKey, getHarvestBatchData]);
+
+  // Fetch batches initially and whenever farmPlotPublicKey or program changes
+  useEffect(() => {
+    fetchHarvestBatches();
+  }, [fetchHarvestBatches]);
+
+  return { harvestBatches, loadingBatches, errorBatches, fetchHarvestBatches };
 };
 
 // Helper functions for enum conversion

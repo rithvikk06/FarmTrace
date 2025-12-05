@@ -162,7 +162,7 @@ export default function FarmTraceApp() {
     try {
       setLoading(true);
       // Fetch all harvest batches for this farmer
-      const accounts = await program.account.harvestBatch.all();
+      const accounts = await (program.account as any).harvestBatch.all();
       
       // Get the farm plot PDA to compare against
       const [farmPDA] = farmPlotPDA(plotId, publicKey);
