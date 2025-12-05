@@ -34,7 +34,7 @@ app.post('/initiate-validation', async (req, res) => {
     console.log(`Coordinates saved to ${filePath}`);
 
     // Trigger validation logic in the background (don't await)
-    triggerValidation(plotId, polygonCoordinates);
+    triggerValidation(plotId, farmerKey, polygonCoordinates);
 
     res.status(200).json({ message: 'Validation process initiated successfully.' });
   } catch (error) {
