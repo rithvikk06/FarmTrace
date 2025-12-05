@@ -1,12 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{Mint, Token, TokenAccount, mint_to, MintTo},
-};
-use mpl_token_metadata::{
-    instructions::{CreateV1, CreateV1InstructionArgs},
-    types::{Creator, TokenStandard},
-};
 
 declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 
@@ -49,95 +41,6 @@ pub mod farmtrace {
         farm_plot.is_validated = false; // New field
         farm_plot.validator = ctx.accounts.validator.key(); // New field
         farm_plot.bump = ctx.bumps.farm_plot;
-        
-        // Mint 1 NFT token to farmer
-        let farmer_key = ctx.accounts.farmer.key();
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            b"mint",
-            plot_id.as_bytes(),
-            farmer_key.as_ref(),
-            &[ctx.bumps.mint],
-        ]];
-        
-        mint_to(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                MintTo {
-                    mint: ctx.accounts.mint.to_account_info(),
-                    to: ctx.accounts.token_account.to_account_info(),
-                    authority: ctx.accounts.mint.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            1,
-        )?;
-        
-        // Create metadata using mpl-token-metadata v4
-        let commodity_str = match commodity_type {
-            CommodityType::Cocoa => "Cocoa",
-            CommodityType::Coffee => "Coffee",
-            CommodityType::PalmOil => "Palm Oil",
-            CommodityType::Soy => "Soy",
-            CommodityType::Cattle => "Cattle",
-            CommodityType::Rubber => "Rubber",
-            CommodityType::Timber => "Timber",
-        };
-        
-        let metadata_title = format!("FarmTrace: {}", plot_id);
-        let metadata_uri = format!(
-            "https://farmtrace.io/api/metadata/{}",
-            ctx.accounts.mint.key()
-        );
-        
-        // Use CreateV1 instruction from mpl-token-metadata v4
-        let create_metadata_accounts_ix = CreateV1 {
-            metadata: ctx.accounts.metadata.key(),
-            master_edition: None,
-            mint: (ctx.accounts.mint.key(), true),
-            authority: ctx.accounts.mint.key(),
-            payer: ctx.accounts.farmer.key(),
-            update_authority: (ctx.accounts.mint.key(), true),
-            system_program: ctx.accounts.system_program.key(),
-            sysvar_instructions: anchor_lang::solana_program::sysvar::instructions::ID,
-            spl_token_program: Some(ctx.accounts.token_program.key()),
-        };
-        
-        let create_args = CreateV1InstructionArgs {
-            name: metadata_title,
-            symbol: "FARM".to_string(),
-            uri: metadata_uri,
-            seller_fee_basis_points: 0,
-            creators: Some(vec![
-                Creator {
-                    address: ctx.accounts.farmer.key(),
-                    verified: true,
-                    share: 100,
-                }
-            ]),
-            primary_sale_happened: false,
-            is_mutable: true,
-            token_standard: TokenStandard::NonFungible,
-            collection: None,
-            uses: None,
-            collection_details: None,
-            rule_set: None,
-            decimals: Some(0),
-            print_supply: None,
-        };
-        
-        let create_ix = create_metadata_accounts_ix.instruction(create_args);
-        
-        anchor_lang::solana_program::program::invoke_signed(
-            &create_ix,
-            &[
-                ctx.accounts.metadata.to_account_info(),
-                ctx.accounts.mint.to_account_info(),
-                ctx.accounts.farmer.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-                ctx.accounts.token_program.to_account_info(),
-            ],
-            signer_seeds,
-        )?;
         
         emit!(FarmPlotRegistered {
             plot_id,
@@ -324,33 +227,11 @@ pub struct RegisterFarmPlot<'info> {
     #[account(
         init,
         payer = farmer,
-        space = 8 + 432,
+        space = 8 + 400, // discriminator + data
         seeds = [b"farm_plot", plot_id.as_bytes(), farmer.key().as_ref()],
         bump
     )]
     pub farm_plot: Account<'info, FarmPlot>,
-    
-    #[account(
-        init,
-        payer = farmer,
-        mint::decimals = 0,
-        mint::authority = mint,
-        seeds = [b"mint", plot_id.as_bytes(), farmer.key().as_ref()],
-        bump
-    )]
-    pub mint: Account<'info, Mint>,
-    
-    #[account(
-        init,
-        payer = farmer,
-        associated_token::mint = mint,
-        associated_token::authority = farmer,
-    )]
-    pub token_account: Account<'info, TokenAccount>,
-    
-    /// CHECK: This is validated by Metaplex
-    #[account(mut)]
-    pub metadata: UncheckedAccount<'info>,
     
     #[account(mut)]
     pub farmer: Signer<'info>,
@@ -360,7 +241,6 @@ pub struct RegisterFarmPlot<'info> {
     pub validator: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]

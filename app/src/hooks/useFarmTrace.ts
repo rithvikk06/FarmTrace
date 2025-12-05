@@ -1,12 +1,10 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { Program, AnchorProvider, web3, BN, Idl } from '@coral-xyz/anchor';
-import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
+import { PublicKey, SystemProgram } from '@solana/web3.js';
 import { useState, useCallback, useMemo } from 'react';
 import idl from '../idl/farmtrace.json';
 
-const PROGRAM_ID = new PublicKey(import.meta.env.VITE_PROGRAM_ID || 'FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE');
-const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+const PROGRAM_ID = new PublicKey(import.meta.env.VITE_PROGRAM_ID || 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
 
 export interface FarmPlotData {
   plotId: string;
@@ -19,8 +17,6 @@ export interface FarmPlotData {
   deforestationRisk: string;
   lastVerified: Date;
   isActive: boolean;
-  mint: string;
-  pda: string;
 }
 
 export interface HarvestBatchData {
@@ -86,36 +82,6 @@ export const useFarmTrace = () => {
     []
   );
 
-  // Derive PDA for mint
-  const getMintPDA = useCallback(
-    (plotId: string, farmer: PublicKey) => {
-      return PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('mint'),
-          Buffer.from(plotId),
-          farmer.toBuffer(),
-        ],
-        PROGRAM_ID
-      );
-    },
-    []
-  );
-
-  // Derive metadata PDA (Metaplex standard)
-  const getMetadataPDA = useCallback(
-    (mint: PublicKey) => {
-      return PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('metadata'),
-          METADATA_PROGRAM_ID.toBuffer(),
-          mint.toBuffer(),
-        ],
-        METADATA_PROGRAM_ID
-      );
-    },
-    []
-  );
-
   // Derive PDA for harvest batch
   const getHarvestBatchPDA = useCallback(
     (batchId: string, farmer: PublicKey) => {
@@ -131,7 +97,7 @@ export const useFarmTrace = () => {
     []
   );
 
-  // Register a new farm plot with NFT
+  // Register a new farm plot
   const registerFarmPlot = useCallback(
     async (data: {
       plotId: string;
@@ -150,12 +116,6 @@ export const useFarmTrace = () => {
 
       try {
         const [farmPlotPDA] = getFarmPlotPDA(data.plotId, wallet.publicKey);
-        const [mintPDA] = getMintPDA(data.plotId, wallet.publicKey);
-        const [metadataPDA] = getMetadataPDA(mintPDA);
-        const tokenAccount = await getAssociatedTokenAddress(
-          mintPDA,
-          wallet.publicKey
-        );
 
         const tx = await program.methods
           .registerFarmPlot(
@@ -169,25 +129,13 @@ export const useFarmTrace = () => {
           )
           .accounts({
             farmPlot: farmPlotPDA,
-            mint: mintPDA,
-            tokenAccount: tokenAccount,
-            metadata: metadataPDA,
             farmer: wallet.publicKey,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            metadataProgram: METADATA_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
-            rent: SYSVAR_RENT_PUBKEY,
           })
           .rpc();
 
-        console.log('Farm plot registered with NFT:', tx);
-        return { 
-          success: true, 
-          signature: tx, 
-          farmPlotPDA: farmPlotPDA.toString(),
-          mint: mintPDA.toString()
-        };
+        console.log('Farm plot registered:', tx);
+        return { success: true, signature: tx, farmPlotPDA: farmPlotPDA.toString() };
       } catch (err: any) {
         console.error('Error registering farm plot:', err);
         setError(err.message);
@@ -196,53 +144,7 @@ export const useFarmTrace = () => {
         setLoading(false);
       }
     },
-    [program, wallet, getFarmPlotPDA, getMintPDA, getMetadataPDA]
-  );
-
-  // Get all farm plots owned by a farmer
-  const getAllFarmPlots = useCallback(
-    async (farmer?: PublicKey): Promise<FarmPlotData[]> => {
-      if (!program || !connection) return [];
-
-      try {
-        const farmerKey = farmer || wallet.publicKey;
-        if (!farmerKey) return [];
-
-        // Fetch all farm plot accounts for this farmer
-        const allAccounts = await program.account.farmPlot.all([
-          {
-            memcmp: {
-              offset: 8 + 32, // Skip discriminator + plot_id string length
-              bytes: farmerKey.toBase58(),
-            }
-          }
-        ]);
-
-        const plots: FarmPlotData[] = allAccounts.map((accountInfo) => {
-          const plotData = accountInfo.account as any;
-          return {
-            plotId: plotData.plotId,
-            farmerName: plotData.farmerName,
-            location: plotData.location,
-            coordinates: plotData.coordinates,
-            areaHectares: plotData.areaHectares,
-            commodityType: parseCommodityType(plotData.commodityType),
-            complianceScore: plotData.complianceScore,
-            deforestationRisk: parseRisk(plotData.deforestationRisk),
-            lastVerified: new Date(plotData.lastVerified.toNumber() * 1000),
-            isActive: plotData.isActive,
-            mint: plotData.mint.toString(),
-            pda: accountInfo.publicKey.toString(),
-          };
-        });
-
-        return plots;
-      } catch (err: any) {
-        console.error('Error fetching farm plots:', err);
-        return [];
-      }
-    },
-    [program, connection, wallet]
+    [program, wallet, getFarmPlotPDA]
   );
 
   // Register a harvest batch
@@ -354,17 +256,13 @@ export const useFarmTrace = () => {
             Buffer.from('verification'),
             farmPlotPDA.toBuffer(),
             wallet.publicKey.toBuffer(),
-            Buffer.from(new BN(timestamp).toArray('le', 8)),
+            Buffer.from(timestamp.toString().slice(0, 8)),
           ],
           PROGRAM_ID
         );
 
         const tx = await program.methods
-          .recordSatelliteVerification(
-            verificationHash,
-            noDeforestation,
-            new BN(timestamp)
-          )
+          .recordSatelliteVerification(verificationHash, noDeforestation)
           .accounts({
             verification: verificationPDA,
             farmPlot: farmPlotPDA,
@@ -409,8 +307,6 @@ export const useFarmTrace = () => {
           deforestationRisk: parseRisk(farmPlotAccount.deforestationRisk),
           lastVerified: new Date(farmPlotAccount.lastVerified.toNumber() * 1000),
           isActive: farmPlotAccount.isActive,
-          mint: farmPlotAccount.mint.toString(),
-          pda: farmPlotPDA.toString(),
         };
       } catch (err: any) {
         console.error('Error fetching farm plot:', err);
@@ -503,7 +399,6 @@ export const useFarmTrace = () => {
     getFarmPlotData,
     getHarvestBatchData,
     generateDDSReport,
-    getAllFarmPlots,
     getFarmPlotPDA,
     getHarvestBatchPDA,
   };

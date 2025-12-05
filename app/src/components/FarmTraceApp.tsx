@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useConnection, useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
 import { AnchorProvider, Program, web3, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import MapComponent from "./MapComponent"; // Import the map
 import SHA256 from 'crypto-js/sha256';
 
 const PROGRAM_ID = new PublicKey("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
-const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-const SYSVAR_RENT_PUBKEY = new PublicKey('SysvarRent111111111111111111111111111111111');
 
 const commodityOptions = [
   "Cocoa", "Coffee", "PalmOil", "Soy", "Cattle", "Rubber", "Timber"
@@ -19,25 +16,13 @@ type Commodity = typeof commodityOptions[number];
 const batchStatusOptions = ["Harvested", "Processing", "InTransit", "Delivered"] as const;
 type BatchStatus = typeof batchStatusOptions[number];
 
-// PDA helpers
+// -----------------------------
+// Helpers: PDA derivation
+// -----------------------------
 function farmPlotPDA(plotId: string, farmerPubkey: PublicKey) {
   return web3.PublicKey.findProgramAddressSync(
     [Buffer.from("farm_plot"), Buffer.from(plotId), farmerPubkey.toBuffer()],
     PROGRAM_ID
-  );
-}
-
-function mintPDA(plotId: string, farmerPubkey: PublicKey) {
-  return web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("mint"), Buffer.from(plotId), farmerPubkey.toBuffer()],
-    PROGRAM_ID
-  );
-}
-
-function metadataPDA(mint: PublicKey) {
-  return web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("metadata"), METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    METADATA_PROGRAM_ID
   );
 }
 
@@ -64,7 +49,7 @@ export default function FarmTraceApp() {
 
   useEffect(() => {
     const initProgram = async () => {
-      if (wallet && connection) {
+      if (provider) {
         try {
           const idl = await Program.fetchIdl(PROGRAM_ID, provider);
           if (!idl) {
@@ -74,11 +59,12 @@ export default function FarmTraceApp() {
           setProgram(program);
         } catch (err) {
           console.error("Error creating program:", err);
+          setProgram(null);
         }
       }
     };
     initProgram();
-  }, [wallet, connection]);
+  }, [provider]);
 
   useEffect(() => {
     if (program) {
@@ -292,10 +278,12 @@ export default function FarmTraceApp() {
     setLoading(true);
     setTxMsg(null);
     try {
+      const [batchPDA] = harvestBatchPDA(batchId, publicKey);
       const [farmPDA] = farmPlotPDA(plotId, publicKey);
       const dds: any = await program.methods
         .generateDdsData()
         .accounts({
+          harvestBatch: batchPDA,
           farmPlot: farmPDA,
         })
         .view();
@@ -303,8 +291,8 @@ export default function FarmTraceApp() {
       setDdsReport(dds);
       setTxMsg("DDS report generated successfully!");
     } catch (err: any) {
-      console.error("registerFarmPlot error:", err);
-      onError(err?.message || "Failed to register farm plot");
+      console.error("generateDDS error:", err);
+      setTxMsg("Error: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -392,7 +380,7 @@ export default function FarmTraceApp() {
         }`}>
           <p className="text-sm">{txMsg}</p>
         </div>
-      </div>
+      )}
     </div>
   );
 }
