@@ -7,6 +7,26 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# --- Ensure shell environment is updated after installations ---
+# Source Cargo environment
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+fi
+
+# Add Solana to PATH if it exists
+if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
+    export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+fi
+
+# Source NVM if it exists
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
+fi
+
+
+# --- Installation Checks ---
+
 # Check if Rust is installed
 if ! command -v rustc &> /dev/null; then
     echo "${YELLOW}Installing Rust...${NC}"
@@ -14,14 +34,17 @@ if ! command -v rustc &> /dev/null; then
     source "$HOME/.cargo/env"
 fi
 
+# Set Rust to latest stable to avoid conflicts
+echo "${GREEN}Setting Rust toolchain to stable...${NC}"
+rustup default stable
+
 # Check if Node.js (via NVM) is installed and install if not
 if ! command -v nvm &> /dev/null; then
     echo "${YELLOW}Installing NVM (Node Version Manager)...${NC}"
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
     # Source NVM for immediate use
     export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 fi
 
 # Install and use latest LTS Node.js
@@ -37,11 +60,11 @@ if ! command -v yarn &> /dev/null; then
     npm install -g yarn
 fi
 
-
 # Check if Solana is installed
 if ! command -v solana &> /dev/null; then
     echo "${YELLOW}Installing Solana...${NC}"
     sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+    export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 fi
 
 # Check if Anchor is installed
@@ -52,14 +75,20 @@ if ! command -v anchor &> /dev/null; then
     avm use latest
 fi
 
+# --- Project Setup ---
+
+# Remove package-lock.json files to avoid yarn conflicts
+echo "${GREEN}Removing package-lock.json files...${NC}"
+find . -name 'package-lock.json' -type f -delete
+
 # Install root dependencies
 echo "${GREEN}Installing root dependencies...${NC}"
 yarn install
 
 # Setup Solana wallet
-if [ ! -f ~/.config/solana/id.json ]; then
+if [ ! -f "~/.config/solana/id.json" ]; then
     echo "${YELLOW}Creating Solana wallet...${NC}"
-    solana-keygen new --outfile ~/.config/solana/id.json --no-bip39-passphrase
+    solana-keygen new --outfile "~/.config/solana/id.json" --no-bip39-passphrase
 fi
 
 # Configure Solana
@@ -91,19 +120,18 @@ echo "${GREEN}Updating program IDs...${NC}"
 PROGRAM_ID=$(solana address -k target/deploy/farmtrace-keypair.json)
 echo "Program ID: $PROGRAM_ID"
 
-# Update Anchor.toml
-# Use sed -i or sed -i '' on macOS
+# Update Anchor.toml (cross-platform compatible)
 if [[ "$OSTYPE" == "darwin"* ]]; then
   sed -i '' "s/farmtrace = \".*\"/farmtrace = \"$PROGRAM_ID\"/" Anchor.toml
 else
   sed -i "s/farmtrace = \".*\"/farmtrace = \"$PROGRAM_ID\"/" Anchor.toml
 fi
 
-
-echo "${GREEN}✅ Setup complete!${NC}"
+echo "${GREEN}✅ Setup complete! You may need to restart your terminal for all changes to take effect.${NC}"
 echo ""
 echo "Next steps:"
-echo "1. anchor test          # Run tests"
-echo "2. anchor deploy        # Deploy to devnet"
-echo "3. cd app && yarn dev   # Start frontend"
-echo "4. cd backend && npm run dev # Start backend"
+echo "1. source ~/.bashrc       # To update your current terminal"
+echo "2. anchor test          # Run tests"
+echo "3. anchor deploy        # Deploy to devnet"
+echo "4. cd app && yarn dev   # Start frontend"
+echo "5. cd backend && npm run dev # Start backend"
