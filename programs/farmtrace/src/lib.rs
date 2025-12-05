@@ -6,14 +6,14 @@ declare_id!("FwtvuwpaD8vnDttYg6h8x8bugkm47fuwoNKd9tfF7sCE");
 pub mod farmtrace {
     use super::*;
 
-    /// Register a new farm plot with geolocation data
-    /// This creates the foundational NFT for EUDR compliance
+    /// Register a new farm plot with a hash of its geolocation data.
+    /// This creates the foundational NFT for EUDR compliance.
     pub fn register_farm_plot(
         ctx: Context<RegisterFarmPlot>,
         plot_id: String,
         farmer_name: String,
         location: String,
-        coordinates: String,
+        polygon_hash: String, // Changed from coordinates
         area_hectares: f64,
         commodity_type: CommodityType,
         registration_timestamp: i64,
@@ -22,7 +22,7 @@ pub mod farmtrace {
         
         // Validate inputs
         require!(plot_id.len() <= 32, ErrorCode::PlotIdTooLong);
-        require!(coordinates.len() <= 128, ErrorCode::InvalidCoordinates);
+        require!(polygon_hash.len() <= 64, ErrorCode::InvalidHash); // SHA-256 hash length
         require!(area_hectares > 0.0, ErrorCode::InvalidArea);
         
         // Initialize farm plot data
@@ -30,24 +30,52 @@ pub mod farmtrace {
         farm_plot.farmer = ctx.accounts.farmer.key();
         farm_plot.farmer_name = farmer_name;
         farm_plot.location = location;
-        farm_plot.coordinates = coordinates;
+        farm_plot.polygon_hash = polygon_hash; // Changed
         farm_plot.area_hectares = area_hectares;
         farm_plot.commodity_type = commodity_type;
         farm_plot.registration_timestamp = registration_timestamp;
-        farm_plot.deforestation_risk = DeforestationRisk::Low;
-        farm_plot.compliance_score = 100;
+        farm_plot.deforestation_risk = DeforestationRisk::Low; // Default state
+        farm_plot.compliance_score = 100; // Default state
         farm_plot.last_verified = Clock::get()?.unix_timestamp;
         farm_plot.is_active = true;
+        farm_plot.is_validated = false; // New field
+        farm_plot.validator = ctx.accounts.validator.key(); // New field
         farm_plot.bump = ctx.bumps.farm_plot;
         
         emit!(FarmPlotRegistered {
             plot_id,
             farmer: farm_plot.farmer,
-            coordinates: farm_plot.coordinates.clone(),
+            polygon_hash: farm_plot.polygon_hash.clone(),
             timestamp: registration_timestamp,
         });
         
-        msg!("Farm plot registered successfully!");
+        msg!("Farm plot registered successfully! Validation pending.");
+        Ok(())
+    }
+
+    /// Validates a farm plot after off-chain deforestation analysis.
+    /// Can only be called by the designated validator.
+    pub fn validate_farm_plot(ctx: Context<ValidateFarmPlot>) -> Result<()> {
+        let farm_plot = &mut ctx.accounts.farm_plot;
+
+        // The authority check is handled by the `constraint` in the context.
+        // If the transaction signer is not the `farm_plot.validator`, the
+        // instruction will fail.
+
+        farm_plot.is_validated = true;
+        farm_plot.last_verified = Clock::get()?.unix_timestamp;
+        
+        // Optional: Adjust risk/score based on validation
+        farm_plot.deforestation_risk = DeforestationRisk::Low;
+        farm_plot.compliance_score = 100;
+
+        emit!(FarmPlotValidated {
+            plot_id: farm_plot.plot_id.clone(),
+            validator: farm_plot.validator,
+            timestamp: farm_plot.last_verified,
+        });
+
+        msg!("Farm plot has been successfully validated.");
         Ok(())
     }
 
@@ -62,9 +90,9 @@ pub mod farmtrace {
         let batch = &mut ctx.accounts.harvest_batch;
         let farm_plot = &ctx.accounts.farm_plot;
         
-        // Verify farm plot is compliant (EUDR requirement)
+        // Verify farm plot is compliant AND validated
         require!(
-            farm_plot.is_active && farm_plot.compliance_score >= 70,
+            farm_plot.is_active && farm_plot.is_validated,
             ErrorCode::NonCompliantFarm
         );
         
@@ -119,53 +147,6 @@ pub mod farmtrace {
         Ok(())
     }
 
-    /// Record satellite verification for deforestation monitoring
-    /// This is the oracle integration for EUDR compliance
-    pub fn record_satellite_verification(
-        ctx: Context<RecordSatelliteVerification>,
-        verification_hash: String,
-        no_deforestation: bool,
-        verification_timestamp: i64,
-    ) -> Result<()> {
-        let farm_plot = &mut ctx.accounts.farm_plot;
-        let verification = &mut ctx.accounts.verification;
-        
-        require!(verification_hash.len() <= 64, ErrorCode::InvalidHash);
-        
-        // Store verification data
-        verification.farm_plot = farm_plot.key();
-        verification.verifier = ctx.accounts.verifier.key();
-        verification.verification_timestamp = verification_timestamp;
-        verification.verification_hash = verification_hash.clone();
-        verification.no_deforestation = no_deforestation;
-        verification.verification_type = VerificationType::Satellite;
-        verification.bump = ctx.bumps.verification;
-        
-        // Update farm compliance based on verification
-        if !no_deforestation {
-            farm_plot.deforestation_risk = DeforestationRisk::High;
-            farm_plot.compliance_score = 0;
-            msg!("WARNING: Deforestation detected!");
-        } else {
-            farm_plot.deforestation_risk = DeforestationRisk::Low;
-            if farm_plot.compliance_score < 100 {
-                farm_plot.compliance_score = 100;
-            }
-        }
-        
-        farm_plot.last_verified = verification.verification_timestamp;
-        
-        emit!(SatelliteVerificationRecorded {
-            farm_plot: farm_plot.key(),
-            verification_hash,
-            compliant: no_deforestation,
-            timestamp: verification.verification_timestamp,
-        });
-        
-        msg!("Satellite verification recorded!");
-        Ok(())
-    }
-
     /// Generate DDS (Due Diligence Statement) data for EUDR
     /// This compiles all required data for regulatory submission
     pub fn generate_dds_data(
@@ -178,11 +159,11 @@ pub mod farmtrace {
             batch_id: batch.batch_id.clone(),
             plot_id: farm_plot.plot_id.clone(),
             farmer: farm_plot.farmer,
-            coordinates: farm_plot.coordinates.clone(),
+            polygon_hash: farm_plot.polygon_hash.clone(),
             commodity_type: farm_plot.commodity_type,
             harvest_timestamp: batch.harvest_timestamp,
             weight_kg: batch.weight_kg,
-            no_deforestation_verified: farm_plot.deforestation_risk != DeforestationRisk::High,
+            no_deforestation_verified: farm_plot.is_validated,
             compliance_score: farm_plot.compliance_score,
             last_verified: farm_plot.last_verified,
             registration_timestamp: farm_plot.registration_timestamp,
@@ -209,7 +190,7 @@ pub struct FarmPlot {
     pub farmer: Pubkey,
     pub farmer_name: String,            // max 64
     pub location: String,               // max 64
-    pub coordinates: String,            // max 128
+    pub polygon_hash: String,           // max 64 (SHA-256)
     pub area_hectares: f64,
     pub commodity_type: CommodityType,
     pub registration_timestamp: i64,
@@ -217,6 +198,8 @@ pub struct FarmPlot {
     pub compliance_score: u8,
     pub last_verified: i64,
     pub is_active: bool,
+    pub is_validated: bool,             // New
+    pub validator: Pubkey,              // New: The key that can validate this plot
     pub bump: u8,
 }
 
@@ -231,17 +214,6 @@ pub struct HarvestBatch {
     pub status: BatchStatus,
     pub compliance_status: ComplianceStatus,
     pub destination: String,
-    pub bump: u8,
-}
-
-#[account]
-pub struct SatelliteVerification {
-    pub farm_plot: Pubkey,
-    pub verifier: Pubkey,
-    pub verification_timestamp: i64,
-    pub verification_hash: String,
-    pub no_deforestation: bool,
-    pub verification_type: VerificationType,
     pub bump: u8,
 }
 
@@ -264,8 +236,27 @@ pub struct RegisterFarmPlot<'info> {
     #[account(mut)]
     pub farmer: Signer<'info>,
     
+    /// The authority that will be allowed to validate this farm plot.
+    /// CHECK: This is a Pubkey provided by the client, not a Signer.
+    pub validator: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+pub struct ValidateFarmPlot<'info> {
+    #[account(
+        mut,
+        seeds = [b"farm_plot", farm_plot.plot_id.as_bytes(), farm_plot.farmer.as_ref()],
+        bump = farm_plot.bump,
+        has_one = validator, // This enforces the signer is the validator pubkey stored in the account
+    )]
+    pub farm_plot: Account<'info, FarmPlot>,
+
+    #[account(mut)]
+    pub validator: Signer<'info>,
+}
+
 
 #[derive(Accounts)]
 #[instruction(batch_id: String)]
@@ -303,37 +294,6 @@ pub struct UpdateBatchStatus<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 }
-
-#[derive(Accounts)]
-#[instruction(verification_hash: String, no_deforestation: bool, verification_timestamp: i64)]
-pub struct RecordSatelliteVerification<'info> {
-    #[account(
-        init,
-        payer = verifier,
-        space = 8 + 180,
-        seeds = [
-            b"verification",
-            farm_plot.key().as_ref(),
-            verifier.key().as_ref(),
-            &verification_timestamp.to_le_bytes()
-        ],
-        bump
-    )]
-    pub verification: Account<'info, SatelliteVerification>,
-    
-    #[account(
-        mut,
-        seeds = [b"farm_plot", farm_plot.plot_id.as_bytes(), farm_plot.farmer.as_ref()],
-        bump = farm_plot.bump
-    )]
-    pub farm_plot: Account<'info, FarmPlot>,
-    
-    #[account(mut)]
-    pub verifier: Signer<'info>,
-    
-    pub system_program: Program<'info, System>,
-}
-
 
 #[derive(Accounts)]
 pub struct GenerateDDSData<'info> {
@@ -387,13 +347,6 @@ pub enum ComplianceStatus {
     NonCompliant,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
-pub enum VerificationType {
-    Satellite,
-    Audit,
-    Manual,
-}
-
 // ============================================================================
 // Events (for indexing and monitoring)
 // ============================================================================
@@ -402,7 +355,14 @@ pub enum VerificationType {
 pub struct FarmPlotRegistered {
     pub plot_id: String,
     pub farmer: Pubkey,
-    pub coordinates: String,
+    pub polygon_hash: String,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct FarmPlotValidated {
+    pub plot_id: String,
+    pub validator: Pubkey,
     pub timestamp: i64,
 }
 
@@ -423,14 +383,6 @@ pub struct BatchStatusUpdated {
 }
 
 #[event]
-pub struct SatelliteVerificationRecorded {
-    pub farm_plot: Pubkey,
-    pub verification_hash: String,
-    pub compliant: bool,
-    pub timestamp: i64,
-}
-
-#[event]
 pub struct DDSReportGenerated {
     pub batch_id: String,
     pub compliance_score: u8,
@@ -446,7 +398,7 @@ pub struct DDSReport {
     pub batch_id: String,
     pub plot_id: String,
     pub farmer: Pubkey,
-    pub coordinates: String,
+    pub polygon_hash: String,
     pub commodity_type: CommodityType,
     pub harvest_timestamp: i64,
     pub weight_kg: u64,
@@ -462,20 +414,18 @@ pub struct DDSReport {
 
 #[error_code]
 pub enum ErrorCode {
-    #[msg("Farm is not compliant with EUDR requirements")]
+    #[msg("Farm is not compliant or has not been validated.")]
     NonCompliantFarm,
     #[msg("Plot ID is too long (max 32 characters)")]
     PlotIdTooLong,
     #[msg("Batch ID is too long (max 32 characters)")]
     BatchIdTooLong,
-    #[msg("Invalid coordinates format")]
-    InvalidCoordinates,
     #[msg("Invalid area (must be > 0)")]
     InvalidArea,
     #[msg("Invalid weight (must be > 0)")]
     InvalidWeight,
     #[msg("Destination string is too long")]
     DestinationTooLong,
-    #[msg("Invalid verification hash")]
+    #[msg("Invalid hash")]
     InvalidHash,
 }

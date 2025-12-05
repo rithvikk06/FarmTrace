@@ -98,121 +98,10 @@
       }
     },
     {
-      "name": "record_satellite_verification",
-      "docs": [
-        "Record satellite verification for deforestation monitoring",
-        "This is the oracle integration for EUDR compliance"
-      ],
-      "discriminator": [
-        138,
-        244,
-        124,
-        210,
-        166,
-        206,
-        47,
-        44
-      ],
-      "accounts": [
-        {
-          "name": "verification",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  101,
-                  114,
-                  105,
-                  102,
-                  105,
-                  99,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "farm_plot"
-              },
-              {
-                "kind": "account",
-                "path": "verifier"
-              },
-              {
-                "kind": "arg",
-                "path": "verification_timestamp"
-              }
-            ]
-          }
-        },
-        {
-          "name": "farm_plot",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  114,
-                  109,
-                  95,
-                  112,
-                  108,
-                  111,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "farm_plot.plot_id",
-                "account": "FarmPlot"
-              },
-              {
-                "kind": "account",
-                "path": "farm_plot.farmer",
-                "account": "FarmPlot"
-              }
-            ]
-          }
-        },
-        {
-          "name": "verifier",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "verification_hash",
-          "type": "string"
-        },
-        {
-          "name": "no_deforestation",
-          "type": "bool"
-        },
-        {
-          "name": "verification_timestamp",
-          "type": "i64"
-        }
-      ]
-    },
-    {
       "name": "register_farm_plot",
       "docs": [
-        "Register a new farm plot with geolocation data",
-        "This creates the foundational NFT for EUDR compliance"
+        "Register a new farm plot with a hash of its geolocation data.",
+        "This creates the foundational NFT for EUDR compliance."
       ],
       "discriminator": [
         224,
@@ -261,6 +150,12 @@
           "signer": true
         },
         {
+          "name": "validator",
+          "docs": [
+            "The authority that will be allowed to validate this farm plot."
+          ]
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -279,7 +174,7 @@
           "type": "string"
         },
         {
-          "name": "coordinates",
+          "name": "polygon_hash",
           "type": "string"
         },
         {
@@ -478,6 +373,66 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "name": "validate_farm_plot",
+      "docs": [
+        "Validates a farm plot after off-chain deforestation analysis.",
+        "Can only be called by the designated validator."
+      ],
+      "discriminator": [
+        102,
+        89,
+        26,
+        3,
+        230,
+        150,
+        145,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "farm_plot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  112,
+                  108,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.plot_id",
+                "account": "FarmPlot"
+              },
+              {
+                "kind": "account",
+                "path": "farm_plot.farmer",
+                "account": "FarmPlot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "validator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "farm_plot"
+          ]
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -505,19 +460,6 @@
         174,
         126,
         159
-      ]
-    },
-    {
-      "name": "SatelliteVerification",
-      "discriminator": [
-        241,
-        54,
-        242,
-        242,
-        235,
-        248,
-        86,
-        189
       ]
     }
   ],
@@ -562,6 +504,19 @@
       ]
     },
     {
+      "name": "FarmPlotValidated",
+      "discriminator": [
+        19,
+        187,
+        56,
+        7,
+        70,
+        96,
+        128,
+        2
+      ]
+    },
+    {
       "name": "HarvestBatchRegistered",
       "discriminator": [
         147,
@@ -573,26 +528,13 @@
         21,
         204
       ]
-    },
-    {
-      "name": "SatelliteVerificationRecorded",
-      "discriminator": [
-        248,
-        204,
-        60,
-        159,
-        248,
-        75,
-        249,
-        249
-      ]
     }
   ],
   "errors": [
     {
       "code": 6000,
       "name": "NonCompliantFarm",
-      "msg": "Farm is not compliant with EUDR requirements"
+      "msg": "Farm is not compliant or has not been validated."
     },
     {
       "code": 6001,
@@ -606,28 +548,23 @@
     },
     {
       "code": 6003,
-      "name": "InvalidCoordinates",
-      "msg": "Invalid coordinates format"
-    },
-    {
-      "code": 6004,
       "name": "InvalidArea",
       "msg": "Invalid area (must be > 0)"
     },
     {
-      "code": 6005,
+      "code": 6004,
       "name": "InvalidWeight",
       "msg": "Invalid weight (must be > 0)"
     },
     {
-      "code": 6006,
+      "code": 6005,
       "name": "DestinationTooLong",
       "msg": "Destination string is too long"
     },
     {
-      "code": 6007,
+      "code": 6006,
       "name": "InvalidHash",
-      "msg": "Invalid verification hash"
+      "msg": "Invalid hash"
     }
   ],
   "types": [
@@ -743,7 +680,7 @@
             "type": "pubkey"
           },
           {
-            "name": "coordinates",
+            "name": "polygon_hash",
             "type": "string"
           },
           {
@@ -840,7 +777,7 @@
             "type": "string"
           },
           {
-            "name": "coordinates",
+            "name": "polygon_hash",
             "type": "string"
           },
           {
@@ -880,6 +817,14 @@
             "type": "bool"
           },
           {
+            "name": "is_validated",
+            "type": "bool"
+          },
+          {
+            "name": "validator",
+            "type": "pubkey"
+          },
+          {
             "name": "bump",
             "type": "u8"
           }
@@ -900,8 +845,28 @@
             "type": "pubkey"
           },
           {
-            "name": "coordinates",
+            "name": "polygon_hash",
             "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FarmPlotValidated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "plot_id",
+            "type": "string"
+          },
+          {
+            "name": "validator",
+            "type": "pubkey"
           },
           {
             "name": "timestamp",
@@ -990,87 +955,6 @@
           {
             "name": "timestamp",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "SatelliteVerification",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "farm_plot",
-            "type": "pubkey"
-          },
-          {
-            "name": "verifier",
-            "type": "pubkey"
-          },
-          {
-            "name": "verification_timestamp",
-            "type": "i64"
-          },
-          {
-            "name": "verification_hash",
-            "type": "string"
-          },
-          {
-            "name": "no_deforestation",
-            "type": "bool"
-          },
-          {
-            "name": "verification_type",
-            "type": {
-              "defined": {
-                "name": "VerificationType"
-              }
-            }
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "SatelliteVerificationRecorded",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "farm_plot",
-            "type": "pubkey"
-          },
-          {
-            "name": "verification_hash",
-            "type": "string"
-          },
-          {
-            "name": "compliant",
-            "type": "bool"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "VerificationType",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Satellite"
-          },
-          {
-            "name": "Audit"
-          },
-          {
-            "name": "Manual"
           }
         ]
       }
